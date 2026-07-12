@@ -6,6 +6,12 @@ Be the last surviving character.
 
 ---
 
+## Determinism
+
+The simulation must produce identical results when started with the same random seed.
+
+---
+
 ## Players
 
 - 2–4 players.
@@ -218,6 +224,20 @@ Randomly upgrades
 - Rotation Speed
 
 Duplicate rolls are allowed.
+
+---
+
+## Simulation Loop
+
+Repeat until one player remains:
+
+1. Update physics.
+2. Resolve player collisions.
+3. Resolve weapon collisions.
+4. Resolve weapon hits.
+5. Update statistics.
+6. Check eliminations.
+7. Check winner.
 
 ---
 

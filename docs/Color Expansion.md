@@ -6,6 +6,12 @@ Capture more territory than every other character.
 
 ---
 
+## Determinism
+
+The simulation must produce identical results when started with the same random seed.
+
+---
+
 ## Players
 
 - 2–4 players.
@@ -154,6 +160,19 @@ Possible effects
 - Random path preference.
 
 Effects are chosen randomly throughout the simulation.
+
+---
+
+## Simulation Loop
+
+Repeat until no neutral cells remain:
+
+1. Select target.
+2. Move.
+3. Capture territory.
+4. Update statistics.
+5. Check eliminations.
+6. Check winner.
 
 ---
 

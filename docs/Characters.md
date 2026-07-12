@@ -15,18 +15,6 @@ Characters never change color.
 
 ## Heavy
 
-Theme
-
-- Strength
-- Power
-- Force
-
-Goal
-
-Gain value through stronger interactions.
-
-Examples
-
 Color Expansion
 
 - Capture two cells.
@@ -35,22 +23,9 @@ Weapon Clash
 
 - Gain damage after every hit.
 
-Future simulations should preserve the feeling of becoming stronger.
-
 ---
 
 ## Swift
-
-Theme
-
-- Speed
-- Momentum
-
-Goal
-
-Gain value through faster actions.
-
-Examples
 
 Color Expansion
 
@@ -60,21 +35,9 @@ Weapon Clash
 
 - Faster weapon rotation after every hit.
 
-Future simulations should preserve the feeling of increasing speed.
-
 ---
 
 ## Sleeper
-
-Theme
-
-- Downtime followed by bursts.
-
-Goal
-
-Alternate between inactivity and powerful activity.
-
-Examples
 
 Color Expansion
 
@@ -84,23 +47,9 @@ Weapon Clash
 
 - Weapon sleeps, then spins rapidly.
 
-Future simulations should preserve burst windows.
-
 ---
 
 ## Trickster
-
-Theme
-
-- Chaos
-- RNG
-- Unpredictability
-
-Goal
-
-Become stronger through randomness.
-
-Examples
 
 Color Expansion
 
@@ -109,5 +58,3 @@ Color Expansion
 Weapon Clash
 
 - Random stat upgrades.
-
-Future simulations should always keep Trickster unpredictable.

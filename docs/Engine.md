@@ -6,6 +6,14 @@
 - Vite
 - Localhost only
 
+## Principles
+
+- Reuse systems whenever possible.
+- Never duplicate simulation logic.
+- React handles UI only.
+- Engine handles gameplay.
+- Simulations plug into the engine.
+
 ## Menu
 
 - Select Simulation
