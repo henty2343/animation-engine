@@ -14,6 +14,16 @@
 - Engine handles gameplay.
 - Simulations plug into the engine.
 
+## Simulation Update
+
+Simulations run independently from React rendering.
+
+The engine controls:
+
+- Simulation updates.
+- Rendering updates.
+- Timing.
+
 ## Menu
 
 - Select Simulation

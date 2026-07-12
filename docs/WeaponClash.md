@@ -235,9 +235,9 @@ Repeat until one player remains:
 2. Resolve player collisions.
 3. Resolve weapon collisions.
 4. Resolve weapon hits.
-5. Update statistics.
-6. Check eliminations.
-7. Check winner.
+5. Update player statistics.
+6. Remove eliminated players.
+7. Check if the simulation has ended.
 
 ---
 
@@ -295,9 +295,6 @@ Remaining players faded.
 
 - Clean physics.
 - Smooth collisions.
-- No particles.
-- No screen shake.
-- No camera movement.
 - No weapon overlap.
 - No player overlap.
 

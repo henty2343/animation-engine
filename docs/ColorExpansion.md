@@ -167,12 +167,12 @@ Effects are chosen randomly throughout the simulation.
 
 Repeat until no neutral cells remain:
 
-1. Select target.
-2. Move.
-3. Capture territory.
-4. Update statistics.
-5. Check eliminations.
-6. Check winner.
+1. Select the nearest reachable neutral cell.
+2. Move one step.
+3. Capture the cell if entered.
+4. Update player statistics.
+5. Check for eliminated players.
+6. Check if the simulation has ended.
 
 ---
 
@@ -225,10 +225,6 @@ Remaining players faded.
 
 - Smooth movement.
 - Instant cell recolor.
-- No particles.
-- No screen shake.
-- No camera movement.
-- No recapturing.
 
 ---
 
