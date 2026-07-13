@@ -16,6 +16,12 @@ Describe how a player wins.
 
 ---
 
+## Determinism
+
+The simulation must produce identical results when started with the same random seed, regardless of machine performance or frame rate.
+
+---
+
 ## Players
 
 - Representation
@@ -87,6 +93,18 @@ Live statistics shown during the simulation.
 ## Win Condition
 
 Exactly when the simulation ends.
+
+---
+
+## Definition of Done
+
+Not complete until the same seed produces the same result on repeated runs.
+
+Verify
+
+- Same winner.
+- Same final statistics.
+- Same outcome for every player.
 
 ---
 

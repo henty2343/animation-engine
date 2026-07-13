@@ -14,15 +14,27 @@
 - Engine handles gameplay.
 - Simulations plug into the engine.
 
-## Simulation Update
+## Main Loop
 
-Simulations run independently from React rendering.
+There is exactly one loop. There is never a separate render loop and simulation loop.
 
-The engine controls:
+requestAnimationFrame
+↓
+Engine Tick
+↓
+Simulation Update
+↓
+Rendering
 
-- Simulation updates.
-- Rendering updates.
-- Timing.
+The engine drives this loop. React never drives it — React only starts and stops it.
+
+## Determinism
+
+Simulation updates run on a fixed timestep, independent of rendering FPS.
+
+Rendering may still run at whatever frame rate the browser provides. Only the simulation update step is fixed-timestep.
+
+The same random seed must always produce the same result — same winner, same statistics — regardless of machine performance or frame rate.
 
 ## Menu
 
@@ -54,6 +66,7 @@ The engine controls:
 - Intro screen.
 - Live stats.
 - Winner screen.
+- Owned by the engine (engine/ui), not by React's Menu. The Menu only handles setup before a simulation starts.
 
 ## Sound
 

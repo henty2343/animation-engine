@@ -12,6 +12,18 @@ The simulation must produce identical results when started with the same random 
 
 ---
 
+## Definition of Done
+
+Not complete until the same seed produces the same result on repeated runs.
+
+Verify
+
+- Same winner.
+- Same final statistics.
+- Same HP, damage, and rotation speed for every player.
+
+---
+
 ## Players
 
 - 2–4 players.

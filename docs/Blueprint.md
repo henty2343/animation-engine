@@ -6,11 +6,13 @@ Read the following documents before making changes to the project.
 
 ## Documentation
 
+- Architecture.md
 - Engine.md
 - Characters.md
 - Simulations.md
 - ColorExpansion.md
 - WeaponClash.md
+- Roadmap.md
 - Todo.md
 
 ## Rules
