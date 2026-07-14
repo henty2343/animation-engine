@@ -1,0 +1,22 @@
+import type { Character } from './Character'
+
+/**
+ * The generic shape every Skill follows, per the contract in Skills.md:
+ *
+ * - Reads the character and the current simulation state.
+ * - Returns a modified value — it never mutates state directly.
+ * - Never depends on another character's skill.
+ * - Is passive only — no active abilities, no cooldowns, no player input.
+ * - Modifies an existing mechanic; it never introduces a new one.
+ *
+ * `TState` is the simulation's own state type and `TValue` is whatever
+ * existing mechanic the skill modifies (movement speed, damage, rotation
+ * speed, path choice, etc.). Each simulation's Skills.ts implements one
+ * Skill per character, translated into that simulation's own mechanics
+ * (see Skills.md, Per Simulation).
+ */
+export type Skill<TState, TValue> = (
+  character: Character,
+  state: TState,
+  baseValue: TValue,
+) => TValue
