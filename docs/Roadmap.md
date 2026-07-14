@@ -10,6 +10,8 @@ Every milestone must pass all of the following before moving to the next one:
 - Lint passes (`oxlint`)
 - Project builds successfully (`vite build`)
 
+Where a milestone touches simulation logic, also verify determinism manually (same seed, same result) until automated regression tests exist.
+
 Never continue to the next milestone without approval.
 
 ---
@@ -22,18 +24,19 @@ Create the project's architecture.
 Implement:
 
 * Engine foundation
-* Shared types
+* Shared types (Arena, Character, Player, Simulation, Skill)
 * Character registry
-* Simulation interface
-* Simulation manager
 * Random utility
+* Math utility
+* Colors utility
+* Constants utility
 * Settings utility
 * Project architecture
 
 No gameplay.
 
 Deliverable:
-A clean architecture ready for simulations, matching the folder structure in Architecture.md.
+A clean architecture ready for simulations, matching the folder structure in Architecture.md and the skill contract in Skills.md.
 
 ---
 
@@ -76,6 +79,8 @@ Implement:
 * Simulation update step, hooked into the Phase 2 engine tick (not a second loop)
 * Fixed timestep for simulation updates, independent of rendering FPS
 
+These lifecycle methods live on SimulationEngine directly — there is no separate SimulationManager class.
+
 No actual gameplay.
 
 Deliverable:
@@ -83,7 +88,23 @@ A simulation can be started and stopped, updating on a fixed timestep from the s
 
 ---
 
-# Phase 4 - Shared UI
+# Phase 4 - Shared Systems
+
+Goal:
+Build reusable engine systems.
+
+Implement:
+
+* Statistics system
+* Configuration system
+* Shared helpers
+
+Deliverable:
+Common systems available to every simulation.
+
+---
+
+# Phase 5 - Shared UI
 
 Goal:
 Build reusable UI used by every simulation.
@@ -101,26 +122,7 @@ Implement:
 No gameplay.
 
 Deliverable:
-Every future simulation automatically uses the same UI, including both aspect ratios.
-
----
-
-# Phase 5 - Shared Systems
-
-Goal:
-Build reusable engine systems.
-
-Implement:
-
-* Statistics system
-* Configuration system
-* Shared colors
-* Shared constants
-* Shared helpers
-* Shared math utilities
-
-Deliverable:
-Common systems available to every simulation.
+Every future simulation automatically uses the same UI, including both aspect ratios, backed by the Phase 4 statistics and configuration systems.
 
 ---
 

@@ -4,6 +4,8 @@
 
 Capture more territory than every other character.
 
+Expand into neutral cells. When no neutral cells remain, the winner is the player with the highest territory percentage.
+
 ---
 
 ## Determinism
@@ -62,16 +64,6 @@ Spawn cells are immediately claimed.
 
 ---
 
-## Objective
-
-Expand into neutral cells.
-
-When no neutral cells remain:
-
-Winner = player with the highest territory percentage.
-
----
-
 ## Movement
 
 Movement Rules
@@ -120,6 +112,8 @@ After elimination
 Every Skill modifies movement.
 
 No Skill changes the objective.
+
+See Skills.md for the general skill contract.
 
 ---
 

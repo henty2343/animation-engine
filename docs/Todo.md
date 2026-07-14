@@ -1,5 +1,7 @@
 # Project TODO
 
+Items here are undecided or unsequenced. Once an item is decided and given a phase, move it into Roadmap.md and remove it from here.
+
 ## Characters
 
 - Design Character #5.

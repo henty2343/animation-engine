@@ -59,69 +59,9 @@ Fun should emerge naturally from simple rules interacting.
 
 ---
 
-# React
+# Roles
 
-React is responsible only for:
-
-- UI
-- Menu
-- Settings
-- Statistics
-- Starting and stopping simulations
-
-React should NOT contain gameplay logic.
-
----
-
-# Engine
-
-The engine is responsible for:
-
-- Simulation lifecycle
-- Physics
-- Rendering
-- Timing
-- Recording
-- Audio
-
-Gameplay should never live inside React components.
-
----
-
-# Simulations
-
-Every simulation should be self-contained.
-
-Each simulation owns:
-
-- Config
-- Skills
-- Rules
-- Update logic
-
-A simulation should never modify another simulation.
-
----
-
-# Characters
-
-Characters only define identity.
-
-Characters never contain behaviour.
-
-Behaviour is implemented by each simulation's Skills.
-
----
-
-# Skills
-
-Skills are passive.
-
-Skills modify existing mechanics.
-
-Skills never introduce entirely new mechanics.
-
-Skills should remain recognizable across simulations.
+See Architecture.md for what React, the Engine, Simulations, and Characters each own, and Skills.md for the skill contract. This file does not repeat them — if the two ever disagree, Architecture.md wins.
 
 ---
 

@@ -186,6 +186,8 @@ Every Skill modifies existing mechanics.
 
 No Skill introduces new mechanics.
 
+See Skills.md for the general skill contract.
+
 ---
 
 ### Heavy

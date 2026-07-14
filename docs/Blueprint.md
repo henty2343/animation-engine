@@ -9,6 +9,7 @@ Read the following documents before making changes to the project.
 - Architecture.md
 - Engine.md
 - Characters.md
+- Skills.md
 - Simulations.md
 - ColorExpansion.md
 - WeaponClash.md
