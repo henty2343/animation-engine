@@ -1,6 +1,6 @@
 # Architecture
 
-Folder Structure
+## Folder Structure
 
 /src/types
 
@@ -39,13 +39,13 @@ Only /src/components/Arena has a confirmed use before Phase 1. UI and Shared are
 
 Each concept has exactly one canonical location. Random belongs in /shared, not /engine. Character and Simulation are type-only and belong in /types, not /engine. If a file's location is unclear, it belongs in /types only if it has no runtime behaviour, /shared only if it has no engine-specific dependency, and /engine only if it is part of the tick loop or physics/rendering pipeline itself.
 
-React
+## React
 
 React is responsible only for UI, Menu, Settings, Statistics, and starting/stopping simulations.
 
 React never contains gameplay logic.
 
-Engine
+## Engine
 
 - Simulation Engine
 - Physics
@@ -54,7 +54,7 @@ Engine
 - Audio
 - Recording
 
-Simulation
+## Simulation
 
 Each simulation provides
 
@@ -66,7 +66,7 @@ Each simulation provides
 
 A simulation never modifies another simulation.
 
-Character
+## Character
 
 Characters contain
 
@@ -75,11 +75,11 @@ Characters contain
 
 Characters never contain behaviour.
 
-Skills
+## Skills
 
 Implemented per simulation. See Skills.md for the full contract.
 
-Rendering
+## Rendering
 
 Engine renders.
 
