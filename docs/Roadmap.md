@@ -113,6 +113,7 @@ Implement:
 
 * Main menu
 * Simulation selector
+* Character selector
 * Aspect ratio system (16:9 / 9:16)
 * Arena component
 * Intro screen
@@ -295,4 +296,5 @@ After every milestone:
 * Explain what was implemented.
 * Explain why.
 * List every modified file.
+* Update Progress.md.
 * Wait for approval before continuing.

@@ -12,15 +12,15 @@ It is a **content creation tool** that automatically generates simulation animat
 
 Supported output formats:
 
-- 16:9
-- 9:16
+* 16:9
+* 9:16
 
 The generated videos are intended for platforms such as:
 
-- YouTube
-- YouTube Shorts
-- TikTok
-- Instagram Reels
+* YouTube
+* YouTube Shorts
+* TikTok
+* Instagram Reels
 
 The long-term goal is for creating content to be as simple as:
 
@@ -41,19 +41,20 @@ Read the following documents before making changes to the project.
 
 ## Documentation
 
-- Architecture.md
-- Engine.md
-- Characters.md
-- Skills.md
-- Simulations.md
-- ColorExpansion.md
-- WeaponClash.md
-- Roadmap.md
-- Todo.md
+* Progress.md
+* Architecture.md
+* Engine.md
+* Characters.md
+* Skills.md
+* Simulations.md
+* ColorExpansion.md
+* WeaponClash.md
+* Roadmap.md
+* Todo.md
 
 ## Rules
 
-- The documentation is the project's source of truth.
-- If implementation conflicts with the documentation, follow the documentation.
-- Every new simulation must be documented before implementation.
-- Update the documentation whenever mechanics change.
+* The documentation is the project's source of truth.
+* If implementation conflicts with the documentation, follow the documentation.
+* Every new simulation must be documented before implementation.
+* Update the documentation whenever mechanics change.

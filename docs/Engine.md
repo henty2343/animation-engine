@@ -39,6 +39,7 @@ The same random seed must always produce the same result — same winner, same s
 ## Menu
 
 - Select Simulation
+- Select participating characters (2–4, one per player slot)
 - Simulation-specific settings
 - Aspect Ratio (16:9 / 9:16)
 - Start
