@@ -21,6 +21,7 @@ Reusable runtime utilities. No interfaces live here.
 - Colors
 - Constants
 - Settings
+- Config — generic reusable configuration container (defaults + overrides). Has no engine-specific dependency, so it lives here rather than in /engine, per the placement rule below. Used as the base for engine-wide configuration and for each simulation's own Config.ts.
 
 /src/engine
 
@@ -29,6 +30,7 @@ Engine runtime systems only. Never duplicates anything from /types or /shared.
 - SimulationEngine — runs the tick loop (requestAnimationFrame, update, render) and owns simulation lifecycle (start, stop, restart, reset). There is no separate SimulationManager class.
 - Renderer
 - Physics
+- StatisticsStore (engine/statistics) — generic per-player stats store, plus Ranking.ts's generic sort comparators. Lives here rather than /shared because Roadmap.md's Phase 4 names it an engine system directly ("the engine stores, updates, sorts and exposes statistics"). The engine never defines what statistics exist — each simulation supplies its own stats shape and its own sort comparator.
 
 /src/components
 
@@ -63,6 +65,7 @@ React never contains gameplay logic.
 - Simulation Engine
 - Physics
 - Rendering
+- Statistics
 - Timing
 - Audio
 - Recording
@@ -78,7 +81,7 @@ Each simulation provides
 
 A simulation never modifies another simulation.
 
-Rendering is not part of what a simulation provides — see Rendering below. A simulation only supplies state; the engine draws it.
+Rendering is not part of what a simulation provides — see Rendering below. A simulation only supplies state; the engine draws it. Likewise, a simulation's statistics shape and sort order are its own (see Statistics below) — the engine only stores and ranks whatever the simulation gives it.
 
 ## Character
 
@@ -98,3 +101,17 @@ Implemented per simulation. See Skills.md for the full contract.
 Engine renders.
 
 Simulation only supplies state.
+
+## Statistics
+
+Engine stores, ranks, and exposes per-player statistics via a generic store (see Roadmap.md, Phase 4).
+
+The engine never defines what statistics exist — each simulation supplies its own stats shape and its own sort comparator.
+
+## Configuration
+
+Engine provides a generic, reusable configuration container (see Roadmap.md, Phase 4).
+
+Engine-wide configuration and each simulation's own Config.ts are both built on top of it.
+
+The engine never defines simulation settings.
