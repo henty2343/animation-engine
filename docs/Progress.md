@@ -30,6 +30,7 @@ Everything else under `src/engine`, `src/menu`, `src/components`, and `src/simul
 - Added `Skill` to the `/src/types` list in Architecture.md — Roadmap.md's Phase 1 scope calls for a shared Skill type, and it fits the stated /types criteria (used by every simulation, no runtime logic of its own).
 - Documented `/src/characters`, `/src/simulations`, and `/src/menu` in Architecture.md's Folder Structure — they already existed in the repo but weren't described there.
 - Character colors in the registry are placeholder defaults from a shared palette (`CHARACTER_COLOR_PALETTE` in Colors.ts) — Characters.md specifies that characters have a color, not which exact swatches, so these can change freely without any architectural impact.
+- Corrected Roadmap.md's quality-gate description: Claude has no network access in this environment and cannot run `tsc -b`, `oxlint`, or `vite build` itself. The project owner runs all three manually as part of their review after each milestone. The gates themselves are unchanged — only who runs them.
 
 ## For a New Chat
 

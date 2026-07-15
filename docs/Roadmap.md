@@ -4,11 +4,7 @@ The goal is to build a reusable animation engine capable of supporting many diff
 
 See Architecture.md for folder structure and Engine.md for the main loop and determinism guarantee. This document does not repeat them.
 
-Every milestone must pass all of the following before moving to the next one:
-
-- TypeScript passes (`tsc -b`)
-- Lint passes (`oxlint`)
-- Project builds successfully (`vite build`)
+Every milestone is reviewed by the project owner before moving to the next one. Claude has no network access in this environment and cannot run `tsc -b`, `oxlint`, or `vite build` itself — the project owner runs all three manually as part of their review after each milestone and confirms they pass.
 
 Where a milestone touches simulation logic, also verify determinism manually (same seed, same result) until automated regression tests exist.
 
