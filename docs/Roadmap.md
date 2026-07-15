@@ -106,11 +106,6 @@ Configuration System
 * Simulation-specific configuration.
 * The engine never defines simulation settings.
 
-Shared Helpers
-
-* Reusable engine utilities.
-* No simulation-specific logic.
-
 Deliverable:
 
 Reusable shared systems with no simulation-specific gameplay.
@@ -118,6 +113,8 @@ Reusable shared systems with no simulation-specific gameplay.
 The engine provides the infrastructure.
 
 Each simulation provides its own data and mechanics.
+
+No standalone "Shared Helpers" module is introduced speculatively. New shared utilities are added only once at least two independent systems genuinely need the same logic, not ahead of that need (see docs/CLAUDE.md, General Principles).
 
 ---
 

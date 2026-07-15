@@ -23,6 +23,8 @@ Reusable runtime utilities. No interfaces live here.
 - Settings
 - Config — generic reusable configuration container (defaults + overrides). Has no engine-specific dependency, so it lives here rather than in /engine, per the placement rule below. Used as the base for engine-wide configuration and for each simulation's own Config.ts.
 
+New utilities are added here only once at least two independent systems (e.g. two simulations, or a simulation and the engine) genuinely need the same logic. This folder does not grow speculative or generic helpers ahead of an actual, demonstrated need — see docs/CLAUDE.md, General Principles.
+
 /src/engine
 
 Engine runtime systems only. Never duplicates anything from /types or /shared.

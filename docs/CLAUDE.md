@@ -56,6 +56,7 @@ Fun should emerge naturally from simple rules interacting.
 - Never duplicate logic.
 - Keep files focused on a single responsibility.
 - Think about future simulations before introducing new systems.
+- Introduce a shared abstraction only once at least two independent systems genuinely need it. Do not create generic or speculative modules (e.g. a catch-all "helpers" file) ahead of an actual, demonstrated need.
 
 ---
 

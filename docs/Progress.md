@@ -59,9 +59,9 @@ Implemented:
 - `src/shared/Config.ts` — generic reusable configuration container (`Config<T>`). Takes `defaults` and optional `overrides`, freezes the merged result, and exposes `get(key)`, `getAll()`, and `withOverrides(partial)` (returns a new instance, never mutates). Placed in `/shared` rather than `/engine` per Architecture.md's placement rule, since it has no engine-specific (tick-loop) dependency.
 - `docs/Architecture.md` — added Statistics to the top-level Engine system list and to the `/src/engine` folder bullet list; added Config to the `/src/shared` folder bullet list; added short "## Statistics" and "## Configuration" ownership sections mirroring the existing "## Rendering" section.
 
-Not implemented — flagged for clarification rather than guessed:
+Removed from scope, by project owner decision:
 
-- **Shared Helpers.** Roadmap.md's third Phase 4 bullet ("Reusable engine utilities. No simulation-specific logic.") has no concrete examples anywhere in the docs, unlike Statistics and Configuration, which both come with an explicit purpose and a "the engine never defines X" boundary. Nothing in the current codebase or either simulation doc points to a specific missing utility today. Per docs/CLAUDE.md ("If Requirements Are Missing: Do not invent behaviour. Ask for clarification."), this was raised to the project owner rather than filled in with speculative helpers.
+- **Shared Helpers.** Roadmap.md's third Phase 4 bullet ("Reusable engine utilities. No simulation-specific logic.") was flagged during implementation as having no concrete spec anywhere in the docs, unlike Statistics and Configuration. The project owner reviewed this and decided the milestone itself shouldn't exist: the project philosophy is to avoid creating abstractions before they're needed, so a generic "helpers" module should never be speculative scaffolding — it should only appear once at least two independent systems genuinely need the same logic. The "Shared Helpers" section was removed from Phase 4 in Roadmap.md, and this rule was written into docs/CLAUDE.md (General Principles) and docs/Architecture.md (the `/src/shared` folder description) so future phases follow it automatically. No helpers module was ever created, and `Random.ts`, `Math.ts`, `Colors.ts`, `Constants.ts`, and `Settings.ts` are untouched.
 
 Explicitly not touched, and why:
 
@@ -70,7 +70,7 @@ Explicitly not touched, and why:
 
 No UI, engine tick, or simulation was wired up to either new system yet — that begins once a real simulation (Phase 6+) has stats to report and settings to configure.
 
-Awaiting the project owner's manual `tsc -b` / `oxlint` / `vite build` verification, per Roadmap.md's Development Rules.
+Verified by the project owner: `npm run build` and `npm run lint` both completed with no errors. Phase 4 is approved.
 
 ## Decisions Made Along the Way
 
@@ -93,6 +93,7 @@ Awaiting the project owner's manual `tsc -b` / `oxlint` / `vite build` verificat
 - `StatisticsStore` and `Ranking.ts` were placed in `engine/statistics`, not `/shared`, because Roadmap.md's Phase 4 explicitly calls this an engine system ("the engine stores, updates, sorts and exposes statistics") and Architecture.md's top-level "## Engine" list is the natural place to register it — even though, unlike the tick loop or renderer, it has no direct requestAnimationFrame dependency of its own.
 - `Config<T>` was placed in `/shared`, not `/engine`, following Architecture.md's placement rule literally: it has no engine-specific (tick-loop) dependency, so it belongs alongside `Settings.ts` rather than being pulled into `/engine` just because Roadmap.md's phase heading says "engine systems."
 - `StatisticsStore.update()` throws if no record exists yet for that player, rather than silently creating a partial one — every simulation's own Spawn section establishes a player's initial values up front, so requiring an explicit `set()` first catches a missed initialization rather than masking it with an incomplete stats object.
+- The "Shared Helpers" milestone was removed from Phase 4 in Roadmap.md after review, rather than left as a deferred/unimplemented item. The project owner determined a generic helpers module is exactly the kind of speculative abstraction the project's philosophy avoids. Going forward, a new file in `/src/shared` is only justified once at least two independent systems (two simulations, or a simulation and the engine) genuinely need the same logic — this is now written into `docs/CLAUDE.md` and `docs/Architecture.md` rather than living only as a one-off judgment call.
 
 ## For a New Chat
 
@@ -106,6 +107,6 @@ The demo arena/characters wired into `src/components/Arena/Arena.tsx` and `src/A
 
 `StatisticsStore<TStats>` (engine/statistics) and `Config<T>` (shared/Config.ts) are now available as reusable infrastructure, but nothing constructs an instance of either yet — no simulation exists to report stats or read config from. Each simulation's own `Config.ts` (still an empty placeholder in both ColorExpansion and WeaponClash) is expected to build a `Config<TheirOwnShape>` once that simulation's balance values are decided (Todo.md, Balance).
 
-"Shared Helpers," the third item in Phase 4, was not implemented — it has no concrete spec anywhere in the docs, and was raised to the project owner for clarification instead of guessed at.
+"Shared Helpers," the third item originally listed under Phase 4, has been removed from Roadmap.md entirely — it isn't a deferred item, it's a rejected one. The project's documented position now (docs/CLAUDE.md, General Principles; docs/Architecture.md, `/src/shared`) is that a new shared utility is only added once at least two independent systems genuinely need it, never speculatively.
 
 Update "Current Phase" and "Completed Phases" above after every milestone (see Roadmap.md, Development Rules).
