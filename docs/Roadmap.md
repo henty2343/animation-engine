@@ -84,19 +84,40 @@ A simulation can be started and stopped, updating on a fixed timestep from the s
 
 ---
 
-# Phase 4 - Shared Systems
+Phase 4 - Shared Systems
 
 Goal:
-Build reusable engine systems.
+Build reusable engine systems used by every simulation.
 
 Implement:
 
-* Statistics system
-* Configuration system
-* Shared helpers
+Statistics System
+
+* Generic engine-side statistics store.
+* Generic ranking and sorting helpers.
+* Simulations define their own statistic fields.
+* The engine stores, updates, sorts and exposes statistics.
+* The engine never defines what statistics exist.
+
+Configuration System
+
+* Generic reusable configuration container.
+* Engine-wide configuration.
+* Simulation-specific configuration.
+* The engine never defines simulation settings.
+
+Shared Helpers
+
+* Reusable engine utilities.
+* No simulation-specific logic.
 
 Deliverable:
-Common systems available to every simulation.
+
+Reusable shared systems with no simulation-specific gameplay.
+
+The engine provides the infrastructure.
+
+Each simulation provides its own data and mechanics.
 
 ---
 
