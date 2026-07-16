@@ -42,8 +42,8 @@ Future
 
 Color Expansion
 
-- Grid dimensions.
-- Base movement speed.
+- Grid dimensions. — Temporary placeholder: 20×20 cells (see `src/simulations/ColorExpansion/Config.ts`, `gridSize`). Not playtested; expected to change once the project owner plays a real run.
+- Base movement speed. — Temporary placeholder: 4 cells/second (see `src/simulations/ColorExpansion/Config.ts`, `movementSpeedCellsPerSecond`). Not playtested; expected to change.
 
 Weapon Clash
 
