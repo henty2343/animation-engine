@@ -1,0 +1,122 @@
+.intro-screen,
+.winner-screen {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+}
+
+.intro-screen__card,
+.winner-screen__card {
+  width: 100%;
+  max-width: 560px;
+  text-align: center;
+}
+
+.intro-screen__characters {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 20px;
+}
+
+.intro-screen__character {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+}
+
+.intro-screen__swatch,
+.winner-screen__swatch {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.intro-screen__skill {
+  color: var(--text);
+  font-size: 12px;
+  max-width: 140px;
+}
+
+.winner-screen__winner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.winner-screen__winner .winner-screen__swatch {
+  width: 32px;
+  height: 32px;
+}
+
+.winner-screen__ranking,
+.stats-panel__list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.winner-screen__row,
+.stats-panel__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--code-bg);
+}
+
+.winner-screen__row--winner {
+  background: var(--accent-bg);
+  border: 1px solid var(--accent-border);
+}
+
+.winner-screen__row--faded,
+.stats-panel__row--eliminated {
+  opacity: 0.45;
+}
+
+.stats-panel {
+  width: 260px;
+  padding: 16px;
+  border-left: 1px solid var(--border);
+}
+
+.winner-screen__rank,
+.stats-panel__rank {
+  font-family: var(--mono);
+  color: var(--text);
+  width: 24px;
+}
+
+.winner-screen__swatch,
+.stats-panel__swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.winner-screen__name,
+.stats-panel__name {
+  font-weight: 600;
+  color: var(--text-h);
+  flex: 1;
+}
+
+.winner-screen__stats,
+.stats-panel__stats {
+  font-size: 13px;
+  color: var(--text);
+}

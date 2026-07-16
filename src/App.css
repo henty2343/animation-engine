@@ -1,3 +1,8 @@
+.run-view {
+  flex: 1;
+  display: flex;
+}
+
 .arena-wrapper {
   display: flex;
   flex: 1;

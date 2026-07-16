@@ -1,0 +1,75 @@
+.menu {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 32px 16px 64px;
+  gap: 16px;
+}
+
+.menu-card {
+  width: 100%;
+  max-width: 720px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.menu-section h2 {
+  margin-bottom: 12px;
+}
+
+.menu-tile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.menu-tile-grid--compact {
+  grid-template-columns: repeat(2, minmax(100px, 1fr));
+  max-width: 300px;
+}
+
+.menu-player-count {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.menu-slots {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.menu-slot__label {
+  display: block;
+  font-weight: 600;
+  color: var(--text-h);
+  margin-bottom: 8px;
+}
+
+.menu-subsection {
+  margin-bottom: 16px;
+}
+
+.menu-subsection:last-child {
+  margin-bottom: 0;
+}
+
+.menu-subsection__label {
+  display: block;
+  font-weight: 600;
+  color: var(--text-h);
+  margin-bottom: 8px;
+}
+
+.menu-subsection__placeholder {
+  color: var(--text);
+  font-size: 14px;
+}
+
+.menu-start {
+  display: flex;
+  justify-content: flex-end;
+}

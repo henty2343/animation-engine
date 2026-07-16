@@ -11,6 +11,7 @@ Interfaces and type definitions only. No runtime logic ever lives here. Only hol
 - Player
 - Simulation
 - Skill
+- SimulationDescriptor — minimal id/name/description metadata used by the Menu's Simulation selector and Intro Screen (see Roadmap.md, Phase 5). Deliberately holds no gameplay, Config, or Simulation<TState> implementation — see SimulationDescriptor.ts's own doc comment for why.
 
 /src/shared
 
@@ -22,6 +23,7 @@ Reusable runtime utilities. No interfaces live here.
 - Constants
 - Settings
 - Config — generic reusable configuration container (defaults + overrides). Has no engine-specific dependency, so it lives here rather than in /engine, per the placement rule below. Used as the base for engine-wide configuration and for each simulation's own Config.ts.
+- AspectRatio — pure functions computing the output canvas's pixel dimensions for a chosen aspect ratio (16:9 / 9:16) and the offset needed to center the universal square arena within it (see Roadmap.md, Phase 5 — "Aspect ratio system"; Engine.md, Arena). No tick-loop dependency, so it lives here rather than in /engine, per the placement rule below — engine/rendering/Renderer.ts is the one place that actually consumes it while drawing.
 
 New utilities are added here only once at least two independent systems (e.g. two simulations, or a simulation and the engine) genuinely need the same logic. This folder does not grow speculative or generic helpers ahead of an actual, demonstrated need — see docs/CLAUDE.md, General Principles.
 
@@ -33,14 +35,15 @@ Engine runtime systems only. Never duplicates anything from /types or /shared.
 - Renderer
 - Physics
 - StatisticsStore (engine/statistics) — generic per-player stats store, plus Ranking.ts's generic sort comparators. Lives here rather than /shared because Roadmap.md's Phase 4 names it an engine system directly ("the engine stores, updates, sorts and exposes statistics"). The engine never defines what statistics exist — each simulation supplies its own stats shape and its own sort comparator.
+- UIManager (engine/ui) — owns the shared UI phase lifecycle (Intro -> Running -> Winner, see Engine.md, Timeline and UI). Renders nothing itself; React components in /src/components/UI subscribe to it and render whatever the current phase calls for, the same way SimulationEngine drives the tick loop while engine/rendering does the actual drawing. See Roadmap.md, Phase 5.
 
 /src/components
 
 - Arena — the React component that mounts the canvas the engine renders into. It contains no drawing logic; drawing happens in engine/rendering.
-- UI — reserved for React-side UI pieces. Purpose not yet decided.
-- Shared — reserved for reusable React components. Purpose not yet decided. Not to be confused with the top-level /shared folder, which holds runtime utilities, not components.
+- UI — React components driven by engine/ui/UIManager's phase state: IntroScreen, StatsPanel, WinnerScreen (see Roadmap.md, Phase 5). Each is a pure rendering of whatever generic display data it's given (see components/UI/types.ts's PlayerStatDisplay) — none of them know what any simulation-specific stat means, mirroring engine/statistics/StatisticsStore.ts.
+- Shared — small, stateless, purely presentational React primitives reused by both /src/menu and /src/components/UI: Button, Card, SelectableTile (see Roadmap.md, Phase 5). Not to be confused with the top-level /shared folder, which holds runtime utilities, not components.
 
-Only /src/components/Arena has a confirmed use before Phase 1. UI and Shared are being kept for future use — give each a concrete purpose before adding files, rather than letting either grow undocumented.
+/src/components/Arena, /src/components/UI, and /src/components/Shared all now have a confirmed use as of Phase 5.
 
 /src/characters
 
@@ -50,9 +53,13 @@ The character registry (see Characters.md). Holds Character data only — no sim
 
 One folder per simulation (e.g. ColorExpansion, WeaponClash). Each provides that simulation's own Config, Skills, Rules, Update(), and any types used by that simulation alone (see Simulation section below, and Simulations.md for the template every new simulation follows).
 
+registry.ts, at the top level of this folder (a sibling of the ColorExpansion/ and WeaponClash/ subfolders), lists every simulation's SimulationDescriptor metadata for the Menu — mirroring characters/Characters.ts's registry pattern on the Character side (see Roadmap.md, Phase 5). It never contains gameplay: a simulation being listed here does not mean that simulation folder has anything implemented yet.
+
 /src/menu
 
 React-only setup screens: simulation selection, character selection, simulation-specific settings, aspect ratio, and Start (see Engine.md, Menu). Never contains gameplay logic.
+
+As of Phase 5: Menu.tsx (orchestrator + Start), SimulationSelector.tsx, CharacterSelector.tsx, SettingsPanel.tsx (aspect ratio; simulation-specific settings still a placeholder — see Todo.md, Balance), and MenuSelection.ts (the Menu's output type, kept separate from Menu.tsx so that file exports only the Menu component itself — see .oxlintrc.json, react/only-export-components).
 
 Each concept has exactly one canonical location. Random belongs in /shared, not /engine. Character and Simulation are type-only and belong in /types, not /engine. If a file's location is unclear, it belongs in /types only if it has no runtime behaviour, /shared only if it has no engine-specific dependency, and /engine only if it is part of the tick loop or physics/rendering pipeline itself.
 
@@ -103,6 +110,12 @@ Implemented per simulation. See Skills.md for the full contract.
 Engine renders.
 
 Simulation only supplies state.
+
+As of Phase 5, the shared rendering pipeline (Renderer.ts) also draws a letterboxed background sized to the selected aspect ratio (16:9 / 9:16 — see shared/AspectRatio.ts) and centers the square arena within it. A simulation's own coordinates stay arena-local; only the engine's rendering pipeline knows about the aspect-ratio offset.
+
+## UI Phase Lifecycle
+
+engine/ui/UIManager owns the Intro -> Running -> Winner phase timeline (see Engine.md, Timeline and UI). It renders nothing — React components in /src/components/UI subscribe to it and render accordingly (see Roadmap.md, Phase 5).
 
 ## Statistics
 
