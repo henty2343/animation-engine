@@ -120,7 +120,7 @@ See Skills.md for the general skill contract.
 ### Heavy
 
 - Moves normally.
-- Captures two cells in its movement direction.
+- Attempts to capture the next cell in its movement direction. The additional capture only succeeds if the target cell is unclaimed.
 
 Example
 
