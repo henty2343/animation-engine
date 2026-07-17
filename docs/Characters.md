@@ -7,7 +7,7 @@ Every Character has
 - Name
 - Color
 - Optional Icon
-- One unique Skill implementation per simulation
+- One local hook-interface implementation per simulation (a character may implement zero, one, or several optional hooks — see Skills.md)
 
 Characters never change color.
 
