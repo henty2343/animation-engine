@@ -44,6 +44,13 @@ Color Expansion
 
 - Grid dimensions. — Temporary placeholder: 20×20 cells (see `src/simulations/ColorExpansion/Config.ts`, `gridSize`). Not playtested; expected to change once the project owner plays a real run.
 - Base movement speed. — Temporary placeholder: 4 cells/second (see `src/simulations/ColorExpansion/Config.ts`, `movementSpeedCellsPerSecond`). Not playtested; expected to change.
+- Swift movement multiplier. — Not yet decided. Will live in `ColorExpansion/Config.ts` alongside the other Color Expansion tuning values once Phase 7 begins (see ColorExpansion.md, Skill Hooks — Swift implements `modifySpeed`).
+- Sleeper sleep duration. — Not yet decided. Design intent (ColorExpansion.md, Sleeper): 1 second, unreviewed.
+- Sleeper rush duration. — Not yet decided. Design intent (ColorExpansion.md, Sleeper): 3 seconds, unreviewed.
+- Sleeper rush multiplier. — Not yet decided.
+- Trickster reroll interval. — Not yet decided. Design intent (ColorExpansion.md, Trickster): roughly 5 seconds, unreviewed — chosen only to keep Trickster's active bonus easy for a viewer to follow, not a balanced value.
+- Trickster bonus odds. — Not yet decided which of Trickster's two bonuses (Speed, Path Preference) is favored, if either. Default assumption is a uniform random pick between them, unreviewed.
+- Trickster speed bonus multiplier. — Not yet decided (see ColorExpansion.md, Trickster — the Speed bonus).
 
 Weapon Clash
 

@@ -117,10 +117,26 @@ See Skills.md for the general skill contract.
 
 ---
 
+## Skill Hooks
+
+Color Expansion defines its own local hook interface (see Skills.md — hook names are local to each simulation; the engine never knows about them). Every hook below is optional on a character-by-character basis: a character only implements the hooks for the mechanics its skill actually modifies. Wherever Color Expansion calls a hook, a missing hook is treated as identity — the base value is used unmodified.
+
+Color Expansion's hook interface:
+
+- **`modifySpeed`** — modifies a player's movement speed (cells per second) for the current tick. Called once per player per tick, before movement is applied.
+- **`modifyCapture`** — modifies which cell or cells a player captures on arrival, beyond the cell they moved into. Called when a player enters a cell.
+- **`modifyPathChoice`** — modifies which neutral cell, or which step toward it, a player targets when more than one shortest path exists (see Movement, Target Selection). Called when a player needs to choose a new target. This hook may only influence the tie-break among equally-shortest paths — "always move toward the nearest reachable neutral cell" (see Movement) is a hard rule, not something a Skill can override, so this hook can never cause a player to choose a longer path over a shorter one.
+
+Future hooks may be added to this interface as new Color-Expansion-specific mechanics are introduced. Adding one never requires touching a character that doesn't use it, since every hook is optional.
+
+---
+
 ### Heavy
 
 - Moves normally.
 - Attempts to capture the next cell in its movement direction. The additional capture only succeeds if the target cell is unclaimed.
+
+Hook: `modifyCapture`
 
 Example
 
@@ -133,6 +149,8 @@ Example
 ### Swift
 
 - Increased movement speed.
+
+Hook: `modifySpeed`
 
 ---
 
@@ -153,19 +171,22 @@ Rush
 
 Repeat until eliminated.
 
+Hook: `modifySpeed` — the sleep/rush cycle is expressed entirely through this one hook (sleeping drives speed to zero, rush drives it above base).
+
 ---
 
 ### Trickster
 
-Continuously receives random movement bonuses.
+Rerolls a single active bonus on a fixed timer (reroll interval: see Todo.md, Balance — placeholder value). Only one bonus is active at a time. The chosen bonus remains active until the next reroll — Trickster's behaviour does not change every frame or every movement, so it stays easy to read at a glance. The very first bonus is rolled immediately at spawn, so Trickster is never without an active bonus. Every reroll draws from the simulation's seeded RNG, keeping the simulation fully deterministic.
 
-Possible effects
+Available bonuses (exactly one active at a time)
 
-- Faster movement.
-- Temporary burst.
-- Random path preference.
+- **Speed** — increased movement speed for the duration of the current bonus window.
+- **Path Preference** — biases which equally-shortest path is chosen when more than one exists (see Movement, Target Selection; and Skill Hooks, `modifyPathChoice` above). Never causes a longer path to be chosen over a shorter one.
 
-Effects are chosen randomly throughout the simulation.
+Which bonus is drawn on each reroll, and the odds between them, is a placeholder value (see Todo.md, Balance) — not yet decided.
+
+Hooks: `modifySpeed`, `modifyPathChoice` — exactly one is active at a time, depending on which bonus was most recently rolled.
 
 ---
 
