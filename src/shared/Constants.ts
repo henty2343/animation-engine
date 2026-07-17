@@ -19,6 +19,21 @@ export type AspectRatio = (typeof ASPECT_RATIOS)[keyof typeof ASPECT_RATIOS]
 export const INTRO_SCREEN_DURATION_MS = 1500
 
 /**
+ * Universal square arena size, in pixels (see Engine.md, Arena — "Same
+ * dimensions for every simulation"). This is a TEMPORARY placeholder —
+ * Engine.md's own TODO still lists "Final arena dimensions" as an open
+ * item, and Todo.md's Balance section doesn't cover it either. It exists
+ * here, rather than duplicated as a local constant in every Arena
+ * component, so every simulation's on-screen arena reads the exact same
+ * value (see docs/CLAUDE.md, General Principles — "Never duplicate
+ * logic"). Previously this lived only as a local `DEMO_ARENA` size in
+ * components/Arena/Arena.tsx; that component now reads this constant
+ * too, and ColorExpansionArena.tsx (Color Expansion's real, non-demo
+ * Arena component) reads it as well.
+ */
+export const UNIVERSAL_ARENA_SIZE = 480
+
+/**
  * Simulation-specific balance values (arena size, movement speed, damage,
  * rotation speed, weapon lengths, etc.) are intentionally NOT defined here.
  * They are still undecided — see the "Balance" section of Todo.md — and

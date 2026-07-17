@@ -4,24 +4,25 @@ import { renderFrame, type RenderableCharacter } from '../../engine/rendering/Re
 import { listCharacters } from '../../characters/Characters'
 import type { Arena as ArenaType } from '../../types/Arena'
 import { getCanvasDimensions, getArenaOffset } from '../../shared/AspectRatio'
-import type { AspectRatio } from '../../shared/Constants'
+import { UNIVERSAL_ARENA_SIZE, type AspectRatio } from '../../shared/Constants'
 
 /**
  * Mounts the canvas the engine renders into. Contains no drawing logic of
  * its own — drawing happens in engine/rendering (see Architecture.md,
  * Components).
  *
- * Phase 2 placeholder demo characters/arena size are still in place here
- * (see Roadmap.md, Phase 2 — "Characters should be visible inside an
- * empty arena"): no real Simulation<TState> exists yet to load() and
- * start() (Color Expansion and Weapon Clash are still Phase 6/8 — see
- * Progress.md). Phase 5 only adds aspect-ratio-aware canvas sizing on top
- * of that same demo, so the on-screen preview already matches whichever
- * output format (16:9 / 9:16) was chosen in the Menu (see Engine.md, Menu
- * and Blueprint.md's output formats). Everything else about this demo is
- * unchanged and still awaits replacement once a real simulation exists.
+ * This remains the Phase 2 demo (see Roadmap.md, Phase 2 — "Characters
+ * should be visible inside an empty arena"): no real Simulation<TState>
+ * is loaded here. It is still used as the "running" view's fallback for
+ * any simulation that has no real implementation yet (Weapon Clash —
+ * Phase 8). Color Expansion now has a real implementation and uses
+ * ColorExpansionArena.tsx instead (see App.tsx) — this file is otherwise
+ * unchanged from Phase 5 except reading the arena size from the shared
+ * `UNIVERSAL_ARENA_SIZE` constant rather than a locally hardcoded value,
+ * so the demo and Color Expansion's real arena can never drift apart
+ * (see shared/Constants.ts).
  */
-const DEMO_ARENA: ArenaType = { size: 480 }
+const DEMO_ARENA: ArenaType = { size: UNIVERSAL_ARENA_SIZE }
 
 function getDemoCharacters(): RenderableCharacter[] {
   const characters = listCharacters()

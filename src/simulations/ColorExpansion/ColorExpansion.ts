@@ -1,5 +1,7 @@
 import type { Simulation } from '../../types/Simulation'
 import type { Player } from '../../types/Player'
+import { lerp } from '../../shared/Math'
+import type { RenderableGrid, RenderableSquareCharacter } from '../../engine/rendering/Renderer'
 import {
   createGrid,
   getCellOwner,
@@ -268,4 +270,46 @@ export function computeColorExpansionStats(
     }
   }
   return stats
+}
+
+/**
+ * Maps a ColorExpansionState into the generic renderable shapes that
+ * engine/rendering/Renderer.ts's renderGridFrame draws (see
+ * Architecture.md, Rendering — "Engine renders. Simulation only supplies
+ * state."). This function supplies that state in a render-ready shape;
+ * it mirrors computeColorExpansionStats above, which supplies the same
+ * state in a StatisticsStore-ready shape. Neither function does any
+ * actual drawing — no canvas calls happen outside engine/rendering, and
+ * this file never imports a rendering context.
+ *
+ * Square positions are given in grid-cell units, not pixels — only the
+ * engine's renderGridFrame knows the arena's actual pixel size, so the
+ * pixel conversion happens there, not here. A moving player's position
+ * is linearly interpolated between their current cell and their
+ * in-progress target using moveProgress, matching ColorExpansion.md's
+ * Visual Rules — "Smooth movement" — while territory cells recolor
+ * instantly the moment they're claimed ("Instant cell recolor"), which
+ * is why the grid mapping below does no interpolation of its own: an
+ * owner is simply present or not, never partial.
+ */
+export function mapColorExpansionStateToRenderables(state: ColorExpansionState): {
+  grid: RenderableGrid
+  squareCharacters: RenderableSquareCharacter[]
+} {
+  const colorByPlayerId = new Map(state.players.map((player) => [player.id, player.character.color]))
+
+  const grid: RenderableGrid = {
+    size: state.grid.size,
+    cells: state.grid.cells.map((row) =>
+      row.map((ownerId) => (ownerId === null ? null : (colorByPlayerId.get(ownerId) ?? null))),
+    ),
+  }
+
+  const squareCharacters: RenderableSquareCharacter[] = state.players.map((player) => ({
+    character: player.character,
+    x: lerp(player.x, player.targetX ?? player.x, player.moveProgress),
+    y: lerp(player.y, player.targetY ?? player.y, player.moveProgress),
+  }))
+
+  return { grid, squareCharacters }
 }
