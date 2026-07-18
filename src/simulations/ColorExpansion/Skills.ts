@@ -9,7 +9,7 @@ import { COLOR_EXPANSION_CONFIG } from './Config'
 /**
  * Color Expansion's local hook interface (see docs/Skills.md, Contract —
  * "Every simulation defines its own local hook interface... built from
- * the shared Skill<TState, TValue> function shape"; docs/ColorExpansion.md,
+ * the shared Skill<TContext, TValue> function shape"; docs/ColorExpansion.md,
  * Skill Hooks). Hook names here belong only to Color Expansion — nothing
  * in this file is shared with, inherited by, or expected to match Weapon
  * Clash's own (future) hook interface (see Skills.md).
@@ -20,16 +20,22 @@ import { COLOR_EXPANSION_CONFIG } from './Config'
  * hook, a missing hook is treated as identity — see `getSkillHooks` and
  * its call sites in ColorExpansion.ts.
  *
- * `TState` for each hook below is not the full `ColorExpansionState` —
+ * `TContext` for each hook below is not the full `ColorExpansionState` —
  * it is a small, hook-specific context type this simulation defines for
  * that one call site (the acting player, plus whatever that particular
- * mechanic needs). This is still exactly what Skill.ts's own docs mean
- * by "the simulation's own state type": a shape defined by this
- * simulation, for its own use, never dictated by /types. Handing the
- * *entire* simulation state to every hook would let a hook read (or
- * appear to depend on) every other player's state, in tension with
- * Skills.md's "never depends on another character's hook" rule — a
- * narrow, hook-specific context makes that impossible by construction.
+ * mechanic needs). This is exactly what `/src/types/Skill.ts`'s own docs
+ * mean by `TContext` being deliberately not required to be the entire
+ * simulation state: a shape defined by this simulation, for its own use,
+ * never dictated by /types. Handing the *entire* simulation state to
+ * every hook would let a hook read (or appear to depend on) every other
+ * player's state, in tension with Skills.md's "never depends on another
+ * character's hook" rule — a narrow, hook-specific context makes that
+ * impossible by construction.
+ *
+ * (This file's hook context types predate the rename of the shared type
+ * from `Skill<TState, TValue>` to `Skill<TContext, TValue>` — see
+ * Progress.md, Pre-Phase 8. No behavior changed; only the generic
+ * parameter's name did.)
  *
  * One documented judgment call: `modifyPathChoice`'s context includes
  * the simulation's seeded `Random` (see ColorExpansionState.random in
@@ -42,7 +48,11 @@ import { COLOR_EXPANSION_CONFIG } from './Config'
  * ColorExpansion.ts already processes players in a fixed order (see its
  * own doc comment, established in Phase 6) — the same seed and roster
  * always draw from `random` in the same sequence. Flagged in
- * Progress.md, same as Phase 6's other tie-break judgment calls.
+ * Progress.md, same as Phase 6's other tie-break judgment calls. This
+ * pattern — a hook consuming, but never assigning or reseeding, the
+ * simulation's single RNG — is now written down as a general rule in
+ * Skills.md's own Randomness section, rather than living only as this
+ * one-off judgment call.
  */
 
 /** Trickster's two possible active bonuses (see ColorExpansion.md, Trickster). */
