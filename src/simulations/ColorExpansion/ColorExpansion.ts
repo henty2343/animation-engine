@@ -1,24 +1,29 @@
 import type { Simulation } from '../../types/Simulation'
 import type { Player } from '../../types/Player'
 import { lerp } from '../../shared/Math'
+import { Random } from '../../shared/Random'
 import type { RenderableGrid, RenderableSquareCharacter } from '../../engine/rendering/Renderer'
 import {
   createGrid,
   getCellOwner,
   claimCell,
   hasAnyNeutralCell,
-  findNextStepTowardNearestNeutralCell,
+  isInsideGrid,
+  findPathChoiceTowardNearestNeutralCell,
   type GridState,
 } from './Grid'
 import { COLOR_EXPANSION_CONFIG } from './Config'
+import { getSkillHooks, advanceSkillState, getInitialTricksterBonus, type TricksterBonus } from './Skills'
 
 /**
- * Color Expansion (see docs/ColorExpansion.md). Phase 6 implements
- * exactly what that document describes for Grid, Players, Movement,
- * Territory capture, Elimination, and the Win condition — Character
- * Skills are explicitly out of scope here (see Skills.ts, still an empty
- * placeholder, and Characters.md's Color Expansion column, which arrives
- * in Phase 7).
+ * Color Expansion (see docs/ColorExpansion.md). Phase 6 implemented
+ * Grid, Players, Movement, Territory capture, Elimination, and the Win
+ * condition. Phase 7 adds Character Skills exactly as documented in
+ * ColorExpansion.md's own Skill Hooks section and Skills.ts, on top of
+ * that same gameplay — no mechanic introduced here is new, only modified
+ * by whichever hooks a given player's character implements (see
+ * Skills.md, Contract — "modifies an existing mechanic; never introduces
+ * a new one").
  *
  * A Color Expansion player is the shared Player type (id, slot,
  * character — see types/Player.ts) plus the movement/territory state
@@ -43,11 +48,44 @@ export interface ColorExpansionPlayerState extends Player {
 
   /** See ColorExpansion.md, Elimination. Eliminated players keep their territory but stop moving. */
   eliminated: boolean
+
+  /**
+   * Total simulated time (ms) this player has been active — i.e. not
+   * eliminated. Never decremented, and frozen the instant a player is
+   * eliminated (see advanceSkillState in Skills.ts). Pure bookkeeping for
+   * skills whose effect depends on elapsed time — Sleeper's sleep/rush
+   * cycle and Trickster's reroll timer (see Skills.ts) — updated
+   * centrally by this file's update(), never by a Skill hook itself,
+   * since hooks may read state but never mutate it (see Skills.md,
+   * Contract).
+   */
+  activeTimeMs: number
+
+  /**
+   * Trickster's currently active bonus (see ColorExpansion.md,
+   * Trickster), or `null` for every other character. Rolled once at
+   * spawn and rerolled on a timer by Skills.ts's `advanceSkillState` —
+   * never chosen by the `modifySpeed`/`modifyPathChoice` hooks
+   * themselves, which only ever read whichever bonus is already active.
+   */
+  tricksterActiveBonus: TricksterBonus | null
 }
 
 export interface ColorExpansionState {
   grid: GridState
   players: ColorExpansionPlayerState[]
+
+  /**
+   * This run's seeded RNG (see shared/Random.ts). Unused before Phase 7
+   * — `createInitialState` previously ignored its `seed` parameter
+   * entirely, since every Phase 6 rule (spawn corners, BFS pathfinding)
+   * was fully deterministic without randomness. Trickster's bonus rolls
+   * (initial and rerolled) and Path Preference's tie-break draw are the
+   * first consumers (see Skills.ts) — constructed once per run, from
+   * that run's own seed, per Random.ts's own doc comment ("Each run
+   * should construct its own instance from that run's seed").
+   */
+  random: Random
 }
 
 /** Live per-player territory statistics (see ColorExpansion.md, Statistics). */
@@ -62,13 +100,7 @@ export interface ColorExpansionStats {
  * Players: Opposite corners", "3 Players: Three corners", "4 Players: One
  * corner each"). Corners are assigned in a single fixed winding order —
  * top-left, top-right, bottom-right, bottom-left — and a run with N
- * players simply uses the first N of them. This one rule satisfies all
- * three documented cases at once: slots 0 and 1 (2-player games) land on
- * top-left/bottom-right, which are diagonally opposite; slots 0–2
- * (3-player games) land on three distinct corners; slots 0–3 (4-player
- * games) use all four. Which specific corner is omitted for 3 players
- * (bottom-left, here) is not specified in ColorExpansion.md — this is a
- * judgment call, flagged in Progress.md.
+ * players simply uses the first N of them.
  */
 function getSpawnCorner(slot: number, size: number): { x: number; y: number } {
   switch (slot) {
@@ -92,23 +124,13 @@ function getSpawnCorner(slot: number, size: number): { x: number; y: number } {
  * roster of 2–4 players (see Engine.md, Menu — player count and
  * character-per-slot selection happens before a run starts, in the Menu,
  * not here).
- *
- * The returned object conforms to Simulation<TState> so SimulationEngine
- * can run it exactly like any other simulation (see types/Simulation.ts,
- * engine/core/SimulationEngine.ts).
  */
 export function createColorExpansionSimulation(
   players: Player[],
 ): Simulation<ColorExpansionState> {
   return {
     createInitialState(seed: number): ColorExpansionState {
-      // `seed` is accepted per the Simulation<TState> contract but not
-      // consumed: every rule implemented this phase (spawn corners, BFS
-      // pathfinding) is fully deterministic without randomness. Trickster's
-      // random movement bonuses (see Characters.md) arrive with this
-      // simulation's Skills.ts in Phase 7 and are expected to be the first
-      // consumer of a seeded Random instance here.
-      void seed
+      const random = new Random(seed)
 
       const size = COLOR_EXPANSION_CONFIG.get('gridSize')
       const grid = createGrid(size)
@@ -124,35 +146,40 @@ export function createColorExpansionSimulation(
           targetY: null,
           moveProgress: 0,
           eliminated: false,
+          activeTimeMs: 0,
+          // Rolled here, in fixed player-slot order, so a given seed +
+          // roster always draws Trickster's first bonus identically.
+          tricksterActiveBonus: getInitialTricksterBonus(player.character, random),
         }
       })
 
-      return { grid, players: playerStates }
+      return { grid, players: playerStates, random }
     },
 
     update(state: ColorExpansionState, deltaTimeMs: number): ColorExpansionState {
-      const speed = COLOR_EXPANSION_CONFIG.get('movementSpeedCellsPerSecond')
+      // Skill bookkeeping (activeTimeMs, Trickster's reroll) advances
+      // first, so anything a player's movement this same tick reads
+      // (Sleeper's phase, Trickster's active bonus) already reflects
+      // this tick — see advanceSkillState's own doc comment.
+      advanceSkillState(state.players, deltaTimeMs, state.random)
 
       // Fixed processing order (player slot order, as given in `players`)
       // so that if two players' independently-computed targets are ever
       // the same neutral cell, whichever player is processed first in a
       // given tick claims it first — the same seed/roster always resolves
       // that race the same way. This mirrors Grid.ts's fixed neighbor
-      // order for the same reason (see findNextStepTowardNearestNeutralCell).
+      // order for the same reason, and is also what keeps Trickster's
+      // Path Preference draws from `state.random` deterministic (see
+      // Skills.ts).
       for (const player of state.players) {
         if (player.eliminated) continue
-        advancePlayer(state.grid, player, speed, deltaTimeMs)
+        advancePlayer(state, player, deltaTimeMs)
       }
 
       return state
     },
 
     isComplete(state: ColorExpansionState): boolean {
-      // A player is only ever marked eliminated when no neutral cell is
-      // reachable from them (see advancePlayer below), so "every player
-      // eliminated" already implies no neutral cell is reachable by
-      // anyone — this also covers the edge case where neutral cells
-      // remain but are permanently walled off from every player.
       if (state.players.every((p) => p.eliminated)) return true
       return !hasAnyNeutralCell(state.grid)
     },
@@ -160,34 +187,44 @@ export function createColorExpansionSimulation(
 }
 
 /**
- * Advances one player by one fixed timestep: moves them toward their
- * current target cell, arriving (and capturing, if neutral) as many
- * times as `deltaTimeMs` worth of movement speed allows, and picking a
- * fresh target whenever they don't have a valid one. Implements the
- * per-player portion of ColorExpansion.md's Simulation Loop (steps 1–3;
- * elimination is step 5, handled inline here as soon as no next step
- * exists).
- *
- * Uses a while loop rather than a single "did we cross the finish line"
- * check so that behavior stays correct however `movementSpeedCellsPerSecond`
- * ends up being tuned later (see Config.ts) — a fast enough speed could
- * legitimately cross more than one cell in a single fixed timestep.
+ * Advances one player by one fixed timestep: applies that character's
+ * `modifySpeed` hook (if any) to get this tick's actual movement speed,
+ * moves them toward their current target cell — capturing it, and any
+ * cells their `modifyCapture` hook proposes, on arrival — and picks a
+ * fresh target (via their `modifyPathChoice` hook, if any) whenever they
+ * don't have a valid one. A missing hook is identity throughout: with no
+ * skill hooks at all, this is exactly Phase 6's advancePlayer.
  */
 function advancePlayer(
-  grid: GridState,
+  state: ColorExpansionState,
   player: ColorExpansionPlayerState,
-  speedCellsPerSecond: number,
   deltaTimeMs: number,
 ): void {
+  const hooks = getSkillHooks(player.character)
+
+  const baseSpeed = COLOR_EXPANSION_CONFIG.get('movementSpeedCellsPerSecond')
+  const speedCellsPerSecond = hooks?.modifySpeed
+    ? hooks.modifySpeed(player.character, { player }, baseSpeed)
+    : baseSpeed
+
   let remainingMovement = (speedCellsPerSecond * deltaTimeMs) / 1000
 
   while (remainingMovement > 0) {
-    if (!hasValidTarget(grid, player)) {
-      const step = findNextStepTowardNearestNeutralCell(grid, player.id, player.x, player.y)
-      if (step === null) {
+    if (!hasValidTarget(state.grid, player)) {
+      const choice = findPathChoiceTowardNearestNeutralCell(state.grid, player.id, player.x, player.y)
+      if (choice === null) {
         player.eliminated = true // see ColorExpansion.md, Elimination
         return
       }
+
+      const step = hooks?.modifyPathChoice
+        ? hooks.modifyPathChoice(
+            player.character,
+            { player, candidates: choice.candidates, random: state.random },
+            choice.defaultStep,
+          )
+        : choice.defaultStep
+
       player.targetX = step.x
       player.targetY = step.y
       player.moveProgress = 0
@@ -197,13 +234,41 @@ function advancePlayer(
     if (remainingMovement >= progressNeeded) {
       remainingMovement -= progressNeeded
 
+      const previousX = player.x
+      const previousY = player.y
+
       // Arrive. `targetX`/`targetY` are guaranteed non-null here because
       // hasValidTarget()/the assignment above always set them together.
       player.x = player.targetX as number
       player.y = player.targetY as number
 
-      if (getCellOwner(grid, player.x, player.y) === null) {
-        claimCell(grid, player.x, player.y, player.id) // see ColorExpansion.md, Territory
+      if (getCellOwner(state.grid, player.x, player.y) === null) {
+        claimCell(state.grid, player.x, player.y, player.id) // see ColorExpansion.md, Territory
+      }
+
+      if (hooks?.modifyCapture) {
+        const directionX = player.x - previousX
+        const directionY = player.y - previousY
+        const extraCells = hooks.modifyCapture(
+          player.character,
+          { player, enteredX: player.x, enteredY: player.y, directionX, directionY },
+          [],
+        )
+
+        for (const cell of extraCells) {
+          // The hook only proposes candidates — validating that a
+          // candidate is actually inside the grid and still neutral
+          // happens here, never inside the hook itself (see Skills.md,
+          // Contract: a hook returns a modified value, it never mutates
+          // state directly). Heavy's own out-of-grid case is exactly
+          // this check failing (see Progress.md, Pre-Phase 7 session).
+          if (
+            isInsideGrid(state.grid, cell.x, cell.y) &&
+            getCellOwner(state.grid, cell.x, cell.y) === null
+          ) {
+            claimCell(state.grid, cell.x, cell.y, player.id)
+          }
+        }
       }
 
       player.targetX = null
@@ -224,10 +289,7 @@ function advancePlayer(
  * previously-neutral target cell out from under this one while it's
  * mid-transit; if that happens the target becomes enemy territory (a
  * wall — see ColorExpansion.md, Movement), so this player must discard
- * it and pick a fresh path instead of trying to enter it. Discarding
- * mid-transit resets moveProgress along with the target: a move that
- * never completed never displaced the player, so there's no partial
- * position to preserve.
+ * it and pick a fresh path instead of trying to enter it.
  */
 function hasValidTarget(grid: GridState, player: ColorExpansionPlayerState): boolean {
   if (player.targetX === null || player.targetY === null) return false
@@ -238,11 +300,18 @@ function hasValidTarget(grid: GridState, player: ColorExpansionPlayerState): boo
 /**
  * Computes live territory statistics for every player (see
  * ColorExpansion.md, Statistics — Territory %). Ranking ("Rank" in that
- * same section) is deliberately not computed here: it's a sort over
- * these stats, which is exactly what engine/statistics/Ranking.ts's
- * descendingBy() is for — this function only supplies the numbers to
- * rank. "Skill" is likewise omitted: Character Skills don't exist yet
- * (Phase 7).
+ * same section) is a sort over these stats, handled by
+ * engine/statistics/Ranking.ts's descendingBy() — this function only
+ * supplies the numbers to rank.
+ *
+ * ColorExpansion.md's Statistics section also lists "Skill" as a
+ * per-player field. This is deliberately not added as a stat line here:
+ * with each Character mapped to exactly one Color Expansion skill (see
+ * Characters.md), "Skill" and "Character" are the same value today, and
+ * that Character's name is already shown directly by StatsPanel /
+ * WinnerScreen next to its color swatch — a redundant "Skill: Heavy"
+ * text line next to "Heavy" would just repeat it. Flagged in
+ * Progress.md for review rather than guessed at silently.
  */
 export function computeColorExpansionStats(
   state: ColorExpansionState,
@@ -276,21 +345,11 @@ export function computeColorExpansionStats(
  * Maps a ColorExpansionState into the generic renderable shapes that
  * engine/rendering/Renderer.ts's renderGridFrame draws (see
  * Architecture.md, Rendering — "Engine renders. Simulation only supplies
- * state."). This function supplies that state in a render-ready shape;
- * it mirrors computeColorExpansionStats above, which supplies the same
- * state in a StatisticsStore-ready shape. Neither function does any
- * actual drawing — no canvas calls happen outside engine/rendering, and
- * this file never imports a rendering context.
- *
- * Square positions are given in grid-cell units, not pixels — only the
- * engine's renderGridFrame knows the arena's actual pixel size, so the
- * pixel conversion happens there, not here. A moving player's position
- * is linearly interpolated between their current cell and their
- * in-progress target using moveProgress, matching ColorExpansion.md's
- * Visual Rules — "Smooth movement" — while territory cells recolor
- * instantly the moment they're claimed ("Instant cell recolor"), which
- * is why the grid mapping below does no interpolation of its own: an
- * owner is simply present or not, never partial.
+ * state."). Unchanged in Phase 7: no skill modifies rendering itself
+ * (see Skills.md, Contract — a hook "modifies an existing mechanic," and
+ * movement/capture/path-choice are the only mechanics any Color
+ * Expansion skill touches — see ColorExpansion.md, Character Skills:
+ * "Every Skill modifies movement").
  */
 export function mapColorExpansionStateToRenderables(state: ColorExpansionState): {
   grid: RenderableGrid

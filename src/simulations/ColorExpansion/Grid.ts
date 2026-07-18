@@ -71,19 +71,21 @@ export function hasAnyNeutralCell(grid: GridState): boolean {
 }
 
 /**
- * Fixed neighbor step order used by findNextStepTowardNearestNeutralCell
- * below: up, right, down, left. No diagonals (see ColorExpansion.md,
- * Movement — "No diagonal movement").
+ * Fixed neighbor step order used throughout this file: up, right, down,
+ * left. No diagonals (see ColorExpansion.md, Movement — "No diagonal
+ * movement").
  *
  * This order is also the deterministic tie-break rule when more than one
  * neutral cell is equally near, or more than one shortest path reaches
- * the same neutral cell: the search always explores in this same
- * direction order, so a given grid state always produces the same chosen
- * step. ColorExpansion.md's Movement section names this exact situation
- * — "If multiple paths exist, Character Skills may influence path
- * selection" — implying a well-defined default exists before any Skill
- * touches it. This fixed order is that default; Skills.ts (Phase 7) is
- * expected to bias or override it, not replace the underlying search.
+ * the same neutral cell: distance computations always explore neighbors
+ * in this same direction order, so a given grid state always produces
+ * the same default choice. This fixed order is exactly the default
+ * ColorExpansion.md's Movement section anticipates — "If multiple paths
+ * exist, Character Skills may influence path selection" — and is what
+ * `findPathChoiceTowardNearestNeutralCell` below now also exposes as a
+ * full tie set for Phase 7's `modifyPathChoice` hook (see Skills.ts,
+ * ColorExpansion.md's Skill Hooks) to choose among, instead of only ever
+ * returning the fixed-order winner.
  */
 const NEIGHBOR_STEPS: ReadonlyArray<readonly [dx: number, dy: number]> = [
   [0, -1], // up
@@ -93,46 +95,123 @@ const NEIGHBOR_STEPS: ReadonlyArray<readonly [dx: number, dy: number]> = [
 ]
 
 /**
- * Breadth-first search for the nearest neutral cell reachable from
- * (startX, startY) by moving only through cells owned by `playerId` (own
- * territory) — enemy-owned cells are impassable walls, matching
- * ColorExpansion.md's Movement section exactly:
+ * Computes, for every cell reachable from some neutral cell without
+ * crossing enemy territory, the shortest distance (in steps) to the
+ * nearest neutral cell — via a single multi-source BFS seeded from every
+ * neutral cell on the grid at once (neutral cells start at distance 0).
+ * Cells owned by `playerId` are passable; cells owned by anyone else are
+ * an impassable wall (see Movement — "Enemy territory acts as a wall");
+ * unreached cells stay `-1`.
  *
- * - "Can move through own territory."
- * - "Cannot move through enemy territory."
- * - "Enemy territory acts as a wall."
- * - "Always move toward the nearest reachable neutral cell."
- *
- * Returns the adjacent cell that is the first step of that shortest
- * path, or `null` if no neutral cell is reachable at all — the trigger
- * for elimination (see ColorExpansion.md, Elimination).
- *
- * A neutral cell is a goal, not a passable intermediate step: entering
- * any neutral cell immediately claims it (see Territory), so a path can
- * never walk "through" an uncaptured neutral cell on the way to a
- * farther one. Only the player's own already-claimed cells are treated
- * as passable-but-not-the-destination.
+ * This one pass is the shared foundation both
+ * `findPathChoiceTowardNearestNeutralCell` (below) and, through it,
+ * `findNextStepTowardNearestNeutralCell` are built on. Seeding from every
+ * neutral cell simultaneously — rather than a single-source search
+ * outward from the player — is what makes it possible to later ask, for
+ * any given neighbor of the player, "is this exactly one step closer to
+ * the nearest neutral cell?" in constant time, which is exactly what
+ * detecting a *tie* between equally-shortest first steps requires (see
+ * that function's own doc comment for why this reproduces the original
+ * Phase 6 tie-break exactly).
  */
-export function findNextStepTowardNearestNeutralCell(
+function computeDistanceToNearestNeutral(grid: GridState, playerId: string): number[][] {
+  const { size } = grid
+  const distance: number[][] = Array.from({ length: size }, () => Array(size).fill(-1))
+  const queue: Array<readonly [number, number]> = []
+
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      if (grid.cells[y][x] === null) {
+        distance[y][x] = 0
+        queue.push([x, y])
+      }
+    }
+  }
+
+  let head = 0
+  while (head < queue.length) {
+    const [cx, cy] = queue[head]
+    head++
+
+    for (const [dx, dy] of NEIGHBOR_STEPS) {
+      const nx = cx + dx
+      const ny = cy + dy
+      if (!isInsideGrid(grid, nx, ny)) continue
+      if (distance[ny][nx] !== -1) continue
+
+      const owner = getCellOwner(grid, nx, ny)
+      if (owner !== null && owner !== playerId) continue // enemy territory — wall
+
+      distance[ny][nx] = distance[cy][cx] + 1
+      queue.push([nx, ny])
+    }
+  }
+
+  return distance
+}
+
+/** A single grid cell coordinate. */
+export interface CellCoordinate {
+  x: number
+  y: number
+}
+
+/**
+ * The result of choosing a player's next step toward the nearest neutral
+ * cell, including every tie (see Skills.ts, `ModifyPathChoiceContext`;
+ * ColorExpansion.md, Skill Hooks — `modifyPathChoice`).
+ */
+export interface PathChoice {
+  /**
+   * The first step chosen by the fixed up/right/down/left tie-break
+   * order — bit-for-bit what `findNextStepTowardNearestNeutralCell`
+   * returns, and what every character without a `modifyPathChoice` hook
+   * actually moves toward.
+   */
+  defaultStep: CellCoordinate
+
+  /**
+   * Every first step, in the same fixed order, that lies on some
+   * shortest path to the nearest reachable neutral cell. Always contains
+   * `defaultStep` as its first entry. A single-entry array means there
+   * is no tie to break this tick (see ColorExpansion.md, Movement — "If
+   * multiple paths exist, Character Skills may influence path
+   * selection").
+   */
+  candidates: ReadonlyArray<CellCoordinate>
+}
+
+/**
+ * Finds every equally-shortest first step from (startX, startY) toward
+ * the nearest reachable neutral cell, plus which one the fixed tie-break
+ * order picks by default (see Movement, Target Selection). Returns
+ * `null` if no neutral cell is reachable at all — the trigger for
+ * elimination (see ColorExpansion.md, Elimination).
+ *
+ * `defaultStep` here is guaranteed identical, tick for tick, to what
+ * Phase 6's `findNextStepTowardNearestNeutralCell` computed on its own
+ * single-source BFS: that function started a simultaneous BFS branch
+ * from each of the start cell's passable neighbors (in NEIGHBOR_STEPS
+ * order), processed in FIFO order, and returned whichever branch's
+ * traced-back first step reached a neutral cell first — which, in an
+ * unweighted grid, is exactly "the first candidate (in NEIGHBOR_STEPS
+ * order) lying on a shortest overall path," precisely what `candidates[0]`
+ * below identifies. Reusing `computeDistanceToNearestNeutral`'s
+ * multi-source distances just makes that same fact checkable per
+ * neighbor directly, instead of re-deriving it via a fresh BFS.
+ */
+export function findPathChoiceTowardNearestNeutralCell(
   grid: GridState,
   playerId: string,
   startX: number,
   startY: number,
-): { x: number; y: number } | null {
-  const visited = new Set<string>()
-  const cellKey = (x: number, y: number): string => `${x},${y}`
-  visited.add(cellKey(startX, startY))
+): PathChoice | null {
+  const distance = computeDistanceToNearestNeutral(grid, playerId)
+  const distanceFromStart = distance[startY][startX]
 
-  interface QueueEntry {
-    x: number
-    y: number
-    /** The adjacent cell stepped into first from (startX, startY) to reach this node. */
-    firstStepX: number
-    firstStepY: number
-  }
+  if (distanceFromStart === -1) return null // no reachable neutral cell
 
-  const queue: QueueEntry[] = []
-
+  const candidates: CellCoordinate[] = []
   for (const [dx, dy] of NEIGHBOR_STEPS) {
     const nx = startX + dx
     const ny = startY + dy
@@ -141,41 +220,30 @@ export function findNextStepTowardNearestNeutralCell(
     const owner = getCellOwner(grid, nx, ny)
     if (owner !== null && owner !== playerId) continue // enemy territory — wall
 
-    if (owner === null) {
-      return { x: nx, y: ny } // adjacent neutral cell — nearest possible
-    }
-
-    const key = cellKey(nx, ny)
-    if (!visited.has(key)) {
-      visited.add(key)
-      queue.push({ x: nx, y: ny, firstStepX: nx, firstStepY: ny })
+    if (distance[ny][nx] === distanceFromStart - 1) {
+      candidates.push({ x: nx, y: ny })
     }
   }
 
-  let head = 0
-  while (head < queue.length) {
-    const current = queue[head]
-    head++
+  // distanceFromStart !== -1 guarantees at least one neighbor sits
+  // exactly one step closer, so candidates is never empty here.
+  return { defaultStep: candidates[0], candidates }
+}
 
-    for (const [dx, dy] of NEIGHBOR_STEPS) {
-      const nx = current.x + dx
-      const ny = current.y + dy
-      if (!isInsideGrid(grid, nx, ny)) continue
-
-      const key = cellKey(nx, ny)
-      if (visited.has(key)) continue
-
-      const owner = getCellOwner(grid, nx, ny)
-      if (owner !== null && owner !== playerId) continue // enemy territory — wall
-
-      if (owner === null) {
-        return { x: current.firstStepX, y: current.firstStepY }
-      }
-
-      visited.add(key)
-      queue.push({ x: nx, y: ny, firstStepX: current.firstStepX, firstStepY: current.firstStepY })
-    }
-  }
-
-  return null // no reachable neutral cell
+/**
+ * Original Phase 6 single-step lookup. Now implemented directly on top
+ * of `findPathChoiceTowardNearestNeutralCell` (see that function's doc
+ * comment for why `defaultStep` is unchanged from Phase 6's own BFS) so
+ * there is exactly one place this distance logic lives, per
+ * docs/CLAUDE.md's "Never duplicate logic." Kept as its own export for
+ * any caller — and any character with no `modifyPathChoice` hook — that
+ * only needs the single chosen step, not the full tie set.
+ */
+export function findNextStepTowardNearestNeutralCell(
+  grid: GridState,
+  playerId: string,
+  startX: number,
+  startY: number,
+): CellCoordinate | null {
+  return findPathChoiceTowardNearestNeutralCell(grid, playerId, startX, startY)?.defaultStep ?? null
 }

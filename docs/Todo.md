@@ -44,13 +44,15 @@ Color Expansion
 
 - Grid dimensions. — Temporary placeholder: 20×20 cells (see `src/simulations/ColorExpansion/Config.ts`, `gridSize`). Not playtested; expected to change once the project owner plays a real run.
 - Base movement speed. — Temporary placeholder: 4 cells/second (see `src/simulations/ColorExpansion/Config.ts`, `movementSpeedCellsPerSecond`). Not playtested; expected to change.
-- Swift movement multiplier. — Not yet decided. Will live in `ColorExpansion/Config.ts` alongside the other Color Expansion tuning values once Phase 7 begins (see ColorExpansion.md, Skill Hooks — Swift implements `modifySpeed`).
-- Sleeper sleep duration. — Not yet decided. Design intent (ColorExpansion.md, Sleeper): 1 second, unreviewed.
-- Sleeper rush duration. — Not yet decided. Design intent (ColorExpansion.md, Sleeper): 3 seconds, unreviewed.
-- Sleeper rush multiplier. — Not yet decided.
-- Trickster reroll interval. — Not yet decided. Design intent (ColorExpansion.md, Trickster): roughly 5 seconds, unreviewed — chosen only to keep Trickster's active bonus easy for a viewer to follow, not a balanced value.
-- Trickster bonus odds. — Not yet decided which of Trickster's two bonuses (Speed, Path Preference) is favored, if either. Default assumption is a uniform random pick between them, unreviewed.
-- Trickster speed bonus multiplier. — Not yet decided (see ColorExpansion.md, Trickster — the Speed bonus).
+- Swift movement multiplier. — Temporary placeholder: 1.5× (see `ColorExpansion/Config.ts`, `swiftMovementMultiplier`). Implemented in Phase 7; not playtested.
+- Sleeper sleep duration. — Temporary placeholder: 1000ms (see `ColorExpansion/Config.ts`, `sleeperSleepDurationMs`), matching the design intent already noted here (1 second). Implemented in Phase 7; not playtested.
+- Sleeper rush duration. — Temporary placeholder: 3000ms (see `ColorExpansion/Config.ts`, `sleeperRushDurationMs`), matching the design intent already noted here (3 seconds). Implemented in Phase 7; not playtested.
+- Sleeper rush multiplier. — Temporary placeholder: 2.5× (see `ColorExpansion/Config.ts`, `sleeperRushMultiplier`). No prior design intent existed for this one — this is Phase 7's own unreviewed placeholder.
+- Trickster reroll interval. — Temporary placeholder: 5000ms (see `ColorExpansion/Config.ts`, `tricksterRerollIntervalMs`), matching the design intent already noted here (roughly 5 seconds). Implemented in Phase 7; not playtested.
+- Trickster bonus odds. — Implemented as a uniform random pick between Speed and Path Preference (see `Skills.ts`, `pickTricksterBonus`), matching the default assumption already noted here. Still unreviewed — which bonus (if either) should be favored remains undecided; this is simply what Phase 7 shipped with.
+- Trickster speed bonus multiplier. — Temporary placeholder: 1.5× (see `ColorExpansion/Config.ts`, `tricksterSpeedBonusMultiplier`). Implemented in Phase 7; not playtested.
+
+All nine Color Expansion balance values above are now implemented, but every one is an unplaytested/unreviewed placeholder — the same status `gridSize` and `movementSpeedCellsPerSecond` have carried since Phase 6. All are expected to change once the project owner plays/watches real Phase 7 runs.
 
 Weapon Clash
 
@@ -66,6 +68,7 @@ Weapon Clash
 Color Expansion
 
 - Player square size. — Temporary placeholder: 70% of one grid cell (see `playerSquareCellRatio` in `src/simulations/ColorExpansion/Config.ts`). Not gameplay logic, but still a Color-Expansion-specific tuning value, so it lives in that simulation's own Config alongside `gridSize`/`movementSpeedCellsPerSecond` rather than as a hardcoded number in `engine/rendering/Renderer.ts`. The value itself (0.7) is still unreviewed and expected to change if a different visual treatment is preferred — only its location was settled this session.
+- Intro Screen skill descriptions. — ColorExpansion.md's Intro Screen section calls for skill descriptions to be shown alongside each character; `src/App.tsx` still doesn't pass any `skillDescriptions` into `IntroScreen` (that prop exists but is unused). Deferred out of Phase 7's scope — Phase 7 was scoped to gameplay (Roadmap.md: "Implement: Heavy, Swift, Sleeper, Trickster... Implement exactly as documented"), not UI wiring — and is a natural fit for Phase 11 (Shared Polish) instead. Flagged in Progress.md.
 
 ---
 
