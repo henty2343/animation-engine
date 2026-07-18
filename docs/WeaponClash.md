@@ -124,7 +124,7 @@ Player ↔ Player
 - Never overlap.
 - No damage.
 
-A currently-frozen player is excluded from this collision entirely (see Hit Freeze) — a still-moving player may briefly overlap them rather than bounce.
+A currently-frozen player acts as a static obstacle in this collision (see Hit Freeze): a still-moving player bounces off them normally; the frozen player never moves or changes velocity.
 
 ---
 
@@ -185,7 +185,7 @@ While frozen (either party)
 
 - No movement.
 - No weapon rotation.
-- No collision response is computed for a frozen player, in either role — a frozen player is excluded from collision detection and response entirely, rather than acting as a static, unmovable obstacle. A still-moving player may therefore briefly overlap a frozen player for up to the 0.1s freeze window; normal collision resumes the instant the frozen player unfreezes.
+- A frozen player still participates in collision detection as a static, unmovable obstacle: a still-moving player bounces off them normally on contact, but the frozen player's own velocity is never changed and they never move during the freeze. This is implemented by giving a frozen player's Circle an effectively infinite mass when calling Physics.ts's Bounce primitive (see Architecture.md, Physics) — Physics.ts itself has no concept of "frozen"; it only ever sees two circles with very different masses.
 - Cannot be involved in any further hit, as attacker or victim, for the duration — including later in the same tick the freeze was triggered.
 
 When freeze ends
