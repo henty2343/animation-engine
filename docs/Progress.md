@@ -1,6 +1,6 @@
 # Progress
 
-Last updated: after Phase 7 (Color Expansion Skills) was reviewed, tested, and approved by the project owner, and after a follow-up Pre-Phase 8 session settled the Physics primitive architecture ahead of any Weapon Clash implementation.
+Last updated: after Phase 7 (Color Expansion Skills) was reviewed, tested, and approved by the project owner, after a follow-up Pre-Phase 8 session settled the Physics primitive architecture, and after a further Pre-Phase 8 session locked down Weapon Clash's full simulation loop and Hit Freeze mechanic — all still ahead of any Weapon Clash implementation.
 
 **Update — Phase 7 approved.** The project owner has reviewed Phase 7 directly and tested it, with no errors. Phase 7 (Color Expansion Skills) is now considered complete, joining Phases 1–6 as fully approved work.
 
@@ -8,13 +8,15 @@ Last updated: after Phase 7 (Color Expansion Skills) was reviewed, tested, and a
 
 **Update — Pre-Phase 8 Physics Primitive Architecture session:** following Phase 7's approval, the project owner requested a firmer architectural rule for the still-unimplemented `engine/core/Physics.ts`: it must operate only on generic geometric primitives (`Vector2`, `Circle`, `Segment`) and generic operations on them (Collision, Bounce, Reflection, Sweep Test, Intersection) — never on simulation concepts like Player, Weapon, Enemy, or Projectile. See "Pre-Phase 8 — Physics Primitive Architecture," under Current Phase below, for the full account. No code was written this session — `Physics.ts` remains an empty placeholder, exactly as before — this only sharpens the boundary the earlier Pre-Phase 8 cleanup session had already agreed to in principle.
 
+**Update — Pre-Phase 8 Weapon Clash Simulation Loop Design session:** immediately after the Physics Primitive Architecture session, the project owner and Claude settled the full per-tick simulation loop for Weapon Clash — the exact step order, which parts belong to `engine/core/Physics.ts` versus `src/simulations/WeaponClash/`, a redefinition of Hit Feedback into a proper Hit Freeze hit-stop mechanic, and the flow governing player velocity (chosen once at spawn, never re-decided, only ever modified by collision response). See "Pre-Phase 8 — Weapon Clash Simulation Loop Design," under Current Phase below. No code was written this session; `docs/WeaponClash.md` was updated to reflect the agreed design ahead of implementation, and one judgment call (whether a frozen player blocks as a static obstacle or is excluded from collision entirely) is flagged for the project owner's confirmation before Phase 8 implementation begins.
+
 ## Current Phase
 
 **Phase 7 — Color Expansion Skills — implemented, reviewed, and approved by the project owner.**
 
 Heavy, Swift, Sleeper, and Trickster are all implemented exactly as documented in ColorExpansion.md and the Pre-Phase 7 architecture session, wired into the real simulation via `src/simulations/ColorExpansion/Skills.ts`'s local hook interface (`modifySpeed`, `modifyCapture`, `modifyPathChoice`). See "Phase 7 — Color Expansion Skills" below for the full account, judgment calls, and verification performed. The project owner has since reviewed this phase directly and tested it with no errors — Phase 7 is complete.
 
-**Phase 8 (Weapon Clash MVP) has still not been started.** This is now a deliberate pause at the project owner's explicit instruction — to settle the `Physics.ts` architecture (see "Pre-Phase 8 — Physics Primitive Architecture" below) before any Weapon Clash code is written — rather than a gating requirement left over from Phase 7's review, which is now satisfied.
+**Phase 8 (Weapon Clash MVP) has still not been started.** This is now a deliberate pause at the project owner's explicit instruction — first to settle the `Physics.ts` architecture (see "Pre-Phase 8 — Physics Primitive Architecture" below), and then to settle Weapon Clash's own per-tick simulation loop (see "Pre-Phase 8 — Weapon Clash Simulation Loop Design" below) — before any Weapon Clash code is written, rather than a gating requirement left over from Phase 7's review, which is now satisfied.
 
 ### Pre-Phase 7 fix (start of this session)
 
@@ -95,6 +97,50 @@ A simulation — Weapon Clash, in Phase 8 — converts its own state (its `Weapo
 - `Circle`, `Segment`, and every Collision/Bounce/Reflection/Sweep-Test/Intersection function → `/src/engine/core/Physics.ts` itself
 
 **Not implemented this session.** `Physics.ts`, `Vector2`, and every function above remain unwritten — this session settled the vocabulary and contract only, exactly as the original `Physics.ts` boundary was agreed ahead of code in the prior Pre-Phase 8 session. `docs/Architecture.md`'s Engine and new Physics sections were updated to reflect this vocabulary so Phase 8 doesn't have to re-derive it under time pressure.
+
+**Verification:** documentation-only session — no code changed, so no `tsc -b` / `oxlint` / `vite build` run was needed.
+
+### Pre-Phase 8 — Weapon Clash Simulation Loop Design
+
+Requested by the project owner immediately after the Physics Primitive Architecture session above, before any Phase 8 code was written. Expands WeaponClash.md's original 7-step Simulation Loop into an explicit, ordered per-tick sequence, and settles exactly which part of each step belongs to `engine/core/Physics.ts` versus `src/simulations/WeaponClash/` — the same boundary-before-code discipline the Physics Primitive Architecture session applied to the primitive vocabulary itself.
+
+**The agreed per-tick order** (see `docs/WeaponClash.md`'s rewritten Simulation Loop section for the authoritative version):
+
+1. **Update Physics** — (a) advance freeze timers, (b) weapon rotation for non-frozen players, (c) player movement and wall collision for non-frozen players.
+2. **Resolve Player Collisions** — between non-frozen players only.
+3. **Resolve Weapon Collisions** — reverses both weapons' rotation direction; between non-frozen players only.
+4. **Resolve Weapon Hits** — checked in a fixed player order; a player frozen earlier in the same pass is excluded from every later check in that pass, as either attacker or victim.
+5. **Update player statistics.**
+6. **Remove eliminated players.**
+7. **Check if the simulation has ended.**
+
+**Why this order:** bodies settle (movement, player collision) before weapons are judged against them, since a weapon's Segment is only meaningful once its wielder's position is final for the tick. Weapon↔weapon resolves before weapon↔player, matching WeaponClash.md's original step order, and means a rotation-direction reversal from a weapon clash takes effect starting next tick rather than retroactively changing the segment already used for this tick's hit check.
+
+**Physics.ts / WeaponClash boundary, per step** — every physics-touching step follows the same shape already established by Color Expansion's Grid.ts: WeaponClash converts its own state into a `Circle`/`Segment`, calls a pure Physics.ts primitive, reads back the result, and decides what it means. Physics.ts itself never decides damage, freeze, elimination, or rotation reversal.
+
+- Freeze timers, weapon rotation — pure `WeaponClash/` state; no geometry involved.
+- Movement + wall collision — Physics.ts's Sweep Test and Reflection; WeaponClash applies the returned velocity/position.
+- Player↔player collision — Physics.ts's Sweep Test, Collision (circle×circle), and Bounce; WeaponClash applies the result and confirms it means no HP change.
+- Weapon↔weapon collision — Physics.ts's Sweep Test, Collision (segment×segment), and the same Bounce primitive (applied to the players' Circles, not the weapons); the rotation-direction reversal itself is plain `WeaponClash/` state, since Physics.ts has no concept of "rotation direction."
+- Weapon↔player hit — Physics.ts's Collision (segment×circle) for detection only; hit-cooldown tracking, damage, and freeze-triggering are all `WeaponClash/` gameplay state.
+- Statistics, elimination, and win-condition detection are `WeaponClash/` in full, feeding the existing generic engine systems (`StatisticsStore`, `SimulationEngine.isComplete()`) the same way Color Expansion already does.
+
+**Hit Freeze redefined.** WeaponClash.md's original "Hit Feedback" section (attacker/victim freeze + flash) is renamed and expanded into a full hit-stop contract: on a successful hit, both attacker and victim freeze for 0.1s and flash; while frozen, a player has no movement, no weapon rotation, no collision response, and cannot be involved in any further hit as either attacker or victim — including later in the same tick the triggering hit occurred. When the freeze ends, the player resumes with the exact velocity, direction, and rotation state they had before the freeze; nothing is reset or recalculated. This is deliberately a cosmetic hit-stop, not a gameplay stun — WeaponClash.md is explicit that "the goal is to make every hit feel impactful and readable without turning the freeze into a gameplay mechanic."
+
+**Judgment call flagged for review:** whether a frozen player still acts as a static, unmovable obstacle for a still-moving player's collision check, or is excluded from collision detection entirely (allowing a brief, cosmetically-negligible overlap for up to the 0.1s freeze window, with normal collision resuming the instant they unfreeze). WeaponClash.md's own wording — "no collision response" — was read literally as excluding both parties from the check, and `docs/WeaponClash.md` now documents pass-through behavior on that basis. This is called out explicitly, the same way Phase 6/7 flagged their own tie-break and elimination-edge-case judgment calls, since the doc's wording doesn't unambiguously rule out the static-obstacle reading, and it's a one-line change in `WeaponClash.md`'s Hit Freeze section (and in whichever `WeaponClash/` file implements collision skipping) to switch to it if the project owner prefers that instead.
+
+**Velocity flow clarified**, since Weapon Clash — unlike Color Expansion — has no AI/target-selection step at all (WeaponClash.md, Physics: "Players never move by AI"):
+
+- A player's movement direction and magnitude are chosen exactly once, at `createInitialState`, from the run's seeded `Random` (see Spawn — equal magnitude, random direction). This is the only place a velocity value is *chosen* rather than *derived*.
+- Every tick's movement step reads whatever velocity is already stored from the end of the previous tick (or the spawn value, on tick 1) — there is no per-tick "decide direction" call to re-derive it.
+- Physics.ts modifies velocity in exactly two places, both collision responses: wall Reflection (movement step) and Bounce (player↔player and weapon↔weapon collision steps). Each returns a new velocity that WeaponClash writes back into the player's state.
+- A player's velocity can legitimately be rewritten more than once in a single tick (e.g., a wall bounce followed by a player collision), resolved sequentially in fixed processing order — never simultaneously — which is what keeps a given seed's outcome reproducible.
+- Whatever velocity is sitting in a player's state at the very end of the tick, after every collision response that tick has had its chance to run, is exactly what next tick's movement step reads. There is no separate "current" vs. "next" velocity buffer — this mirrors `ColorExpansionState`'s existing mutate-in-place convention.
+- A frozen player's stored velocity is never read for movement or overwritten by collision response during the freeze window, so "resume with the exact same velocity" on unfreeze is true by construction, not something that needs to be explicitly restored.
+
+**Files updated this session (documentation only):** `docs/WeaponClash.md` — Physics section gained a Velocity subsection; "Hit Feedback" renamed and expanded into "Hit Freeze"; Simulation Loop section rewritten with the full per-tick order above; Player Collision, Weapon Collision, and Weapon Hit sections each gained a one-line cross-reference noting that a frozen player is excluded (see Hit Freeze). `docs/Progress.md` — this entry.
+
+**Not implemented this session.** `Physics.ts` and every file in `src/simulations/WeaponClash/` remain empty placeholders — this session settled the design only, per Blueprint.md's "every new simulation must be documented before implementation" rule, exactly as the Physics Primitive Architecture session did for the primitive vocabulary. Phase 8 implementation (Config placeholders, Todo.md entries, then Physics.ts, then the simulation itself) begins once the frozen-collision judgment call above is confirmed.
 
 **Verification:** documentation-only session — no code changed, so no `tsc -b` / `oxlint` / `vite build` run was needed.
 
@@ -258,7 +304,7 @@ Implemented Heavy, Swift, Sleeper, and Trickster exactly as documented in `Color
 - **Playtesting/balancing the six new placeholder values** — explicitly deferred, same as `gridSize`/`movementSpeedCellsPerSecond` in Phase 6 (see Roadmap.md, Phase 6 — "Do not spend time trying to perfectly balance the simulation before it exists"; the same principle applies here).
 - **Intro Screen skill descriptions** — see judgment calls above; deferred to Phase 11.
 
-**Reviewed and approved by the project owner**, tested with no errors. Per Roadmap.md's Development Rules, this satisfies the condition for beginning Phase 8 — though Phase 8 itself is intentionally still on hold, at the project owner's explicit instruction, until the Physics Primitive Architecture (see "Pre-Phase 8 — Physics Primitive Architecture" above) is settled and this document/Architecture.md are updated to reflect it, which this session has now done.
+**Reviewed and approved by the project owner**, tested with no errors. Per Roadmap.md's Development Rules, this satisfies the condition for beginning Phase 8 — though Phase 8 itself is intentionally still on hold, at the project owner's explicit instruction, until the Physics Primitive Architecture and the Weapon Clash Simulation Loop Design (see both "Pre-Phase 8" sessions above) are settled and this document/Architecture.md/WeaponClash.md are updated to reflect them, which these sessions have now done.
 
 ## Decisions Made Along the Way
 
@@ -283,6 +329,10 @@ Implemented Heavy, Swift, Sleeper, and Trickster exactly as documented in `Color
 - **(Pre-Phase 8, Physics Primitive Architecture)** `Physics.ts` operates only on generic primitives (`Vector2`, `Circle`, `Segment`) and generic operations on them (Collision, Bounce, Reflection, Sweep Test, Intersection) — it never imports or references a simulation type (Player, Weapon, Enemy, Projectile). A simulation converts its own state into these primitives, calls Physics, and decides what the result means. This mirrors `Grid.ts`'s BFS returning candidate cells for `ColorExpansion.ts` to interpret.
 - **(Pre-Phase 8, Physics Primitive Architecture)** `Circle` carries an optional `mass` (default 1), even though Weapon Clash doesn't yet need unevenly-weighted circles, since a correct elastic-collision formula takes mass as a parameter anyway and this avoids a rewrite later.
 - **(Pre-Phase 8, Physics Primitive Architecture)** `Segment` was added to the primitive vocabulary alongside `Circle`, since Weapon Clash's rotating weapon (WeaponClash.md, Weapons) is a line attached to and rotating around a player, not a circle — `Circle` alone would only cover player↔player collision, not the weapon-hit mechanic the simulation is actually built around.
+- **(Pre-Phase 8, Weapon Clash Simulation Loop Design)** The full per-tick order — freeze timers → weapon rotation → movement/wall collision → player collision → weapon collision → weapon hits → statistics → elimination → win check — was settled before any Weapon Clash code was written, along with the exact `Physics.ts`/`WeaponClash/` split at each step.
+- **(Pre-Phase 8, Weapon Clash Simulation Loop Design)** Hit Feedback was redefined as a pure hit-stop (Hit Freeze): both attacker and victim fully pause — no movement, rotation, collision, or further hits — for 0.1s, then resume with their exact prior velocity/rotation state, nothing recalculated.
+- **(Pre-Phase 8, Weapon Clash Simulation Loop Design)** A player's velocity is chosen once, at spawn, from the seeded RNG, and is otherwise only ever modified by collision response (wall Reflection, player/weapon Bounce) — there is no per-tick AI decision, unlike Color Expansion's target-selection step.
+- **(Pre-Phase 8, Weapon Clash Simulation Loop Design)** Whether a frozen player blocks as a static obstacle or is excluded from collision entirely was flagged as an open judgment call; documented for now as pass-through (excluded entirely), pending project owner confirmation.
 
 ## For a New Chat
 
@@ -300,11 +350,13 @@ Phase 1 through Phase 7 files are implemented and have been approved by the proj
 
 See "Phase 7 — Color Expansion Skills" above for the full account, every judgment call made, and the verification performed (`tsc -b` + `oxlint` clean; a headless multi-roster determinism/termination smoke test).
 
-**Phase 8 (Weapon Clash MVP) has still not begun.** This is no longer a pending-review gate — Phase 7 is approved — it is now a deliberate pause at the project owner's explicit instruction, so the `Physics.ts` primitive architecture (see immediately below) could be settled before any Weapon Clash code is written.
+**Phase 8 (Weapon Clash MVP) has still not begun.** This is no longer a pending-review gate — Phase 7 is approved — it is now a deliberate pause at the project owner's explicit instruction, so the `Physics.ts` primitive architecture and Weapon Clash's own simulation loop (see immediately below) could both be settled before any Weapon Clash code is written.
 
 **A small Pre-Phase 8 cleanup session made three documentation/naming-only changes** (see "Pre-Phase 8 — Architecture Cleanup" above): `Skill<TState, TValue>` is now `Skill<TContext, TValue>`; `Skills.md` explicitly documents when a hook may consume the simulation's RNG; and `Simulation.ts` explicitly documents that `update()` may mutate state in place and return the same reference. The `Physics.ts` boundary for Weapon Clash was also agreed in that session, ahead of any Phase 8 code: generic collision/vector-math primitives only belong in `engine/core/Physics.ts`; every Weapon-Clash-specific rule (weapon attachment/rotation, HP, damage, hit cooldown, freeze frames, elimination) belongs in `src/simulations/WeaponClash/` instead.
 
 **A follow-up Pre-Phase 8 session (Physics Primitive Architecture) then made that boundary concrete** (see "Pre-Phase 8 — Physics Primitive Architecture" above): `Physics.ts`'s vocabulary is now `Vector2`, `Circle`, `Segment`, and pure Collision/Bounce/Reflection/Sweep-Test/Intersection functions — it never imports or references a Player, Weapon, Enemy, or Projectile type. `docs/Architecture.md` has been updated with a new Physics section documenting this, plus `Vector2` entries added to the `/src/types` and `/src/shared` folder listings. No code was written this session — `Physics.ts` remains an empty placeholder, and Phase 8 itself has still not started.
+
+**A further Pre-Phase 8 session (Weapon Clash Simulation Loop Design) then locked down the exact per-tick order and the Physics.ts/WeaponClash boundary at each step** (see "Pre-Phase 8 — Weapon Clash Simulation Loop Design" above): freeze timers → weapon rotation → movement/wall collision → player collision → weapon collision → weapon hits → statistics → elimination → win check. This session also redefined Hit Feedback into a full Hit Freeze hit-stop contract and clarified that a player's velocity is chosen once at spawn and only ever modified by collision response afterward. `docs/WeaponClash.md` has been updated to reflect all of this. One judgment call remains flagged for the project owner's confirmation before implementation begins: whether a frozen player blocks as a static obstacle or is excluded from collision entirely during their freeze window (currently documented as excluded/pass-through). No code was written this session — `Physics.ts` and `src/simulations/WeaponClash/` remain empty placeholders, and Phase 8 has still not started.
 
 Everything else under `src/engine/audio`, `src/engine/recording`, `src/simulations/WeaponClash`, and `src/engine/core/Physics.ts` is still an empty placeholder. A file existing does not mean it is implemented; check actual file contents, not just the file tree, before assuming any phase is complete.
 

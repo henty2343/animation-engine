@@ -72,6 +72,13 @@ Rules
 - No tunnelling.
 - Deterministic simulation.
 
+Velocity
+
+- Direction and magnitude are chosen exactly once, at spawn, from the run's seeded RNG (see Spawn — equal magnitude, random direction).
+- No AI or per-tick decision ever re-chooses a player's intended direction.
+- Velocity is only ever modified by collision response: reflecting off a wall, or exchanging velocity in a player↔player or weapon↔weapon bounce.
+- Whatever velocity results at the end of a tick, after every collision response for that tick has run, is exactly what carries into the next tick. There is no separate "next" velocity buffer.
+
 ---
 
 ## Weapons
@@ -105,6 +112,8 @@ Default
 
 Rotation is only modified by Character Skills.
 
+A frozen player's weapon does not rotate for the duration of the freeze (see Hit Freeze).
+
 ---
 
 ## Player Collision
@@ -114,6 +123,8 @@ Player ↔ Player
 - Bounce.
 - Never overlap.
 - No damage.
+
+A currently-frozen player is excluded from this collision entirely (see Hit Freeze) — a still-moving player may briefly overlap them rather than bounce.
 
 ---
 
@@ -125,6 +136,8 @@ Weapon ↔ Weapon
 - Reverse both weapon rotation directions.
 - Weapons never overlap.
 - Weapons never tunnel.
+
+A currently-frozen player is excluded from this collision entirely (see Hit Freeze).
 
 ---
 
@@ -139,6 +152,8 @@ A weapon must completely leave a player before it can deal damage again.
 
 Weapons may damage multiple players in one swing.
 
+A player currently frozen cannot be involved in a weapon hit, as either attacker or victim (see Hit Freeze) — including later in the same tick the freeze was triggered.
+
 ---
 
 ## Damage
@@ -151,22 +166,32 @@ Damage can only increase through Character Skills.
 
 ---
 
-## Hit Feedback
+## Hit Freeze
 
-Successful hit
+A very short hit-stop effect (0.1 seconds), not a gameplay stun.
 
-Attacker
+Trigger
 
-- Freeze 0.1 seconds.
+- A successful weapon hit (see Weapon Hit).
 
-Victim
+On trigger, immediately
 
-- Freeze 0.1 seconds.
-- Flash white during freeze.
+- Attacker freezes for 0.1 seconds.
+- Victim freezes for 0.1 seconds.
+- Both flash white (or another hit effect) for the freeze duration.
+- Other players continue normally.
 
-Other players
+While frozen (either party)
 
-- Continue normally.
+- No movement.
+- No weapon rotation.
+- No collision response is computed for a frozen player, in either role — a frozen player is excluded from collision detection and response entirely, rather than acting as a static, unmovable obstacle. A still-moving player may therefore briefly overlap a frozen player for up to the 0.1s freeze window; normal collision resumes the instant the frozen player unfreezes.
+- Cannot be involved in any further hit, as attacker or victim, for the duration — including later in the same tick the freeze was triggered.
+
+When freeze ends
+
+- Movement, rotation, and collision resume using the exact velocity, direction, and weapon rotation state the player had before the freeze.
+- Nothing is reset or recalculated. The simulation simply resumes.
 
 ---
 
@@ -243,12 +268,15 @@ Duplicate rolls are allowed.
 
 ## Simulation Loop
 
-Repeat until one player remains:
+Repeat until one player remains. Every step below skips any player currently frozen (see Hit Freeze), except where noted.
 
-1. Update physics.
-2. Resolve player collisions.
-3. Resolve weapon collisions.
-4. Resolve weapon hits.
+1. Update Physics
+   a. Advance freeze timers.
+   b. Weapon rotation — non-frozen players only.
+   c. Player movement and wall collision — non-frozen players only.
+2. Resolve Player Collisions — between non-frozen players only.
+3. Resolve Weapon Collisions — reverses both weapons' rotation direction; between non-frozen players only.
+4. Resolve Weapon Hits — checked in a fixed player order; a player frozen earlier in this same pass is excluded from every later check in the pass, as either attacker or victim.
 5. Update player statistics.
 6. Remove eliminated players.
 7. Check if the simulation has ended.
