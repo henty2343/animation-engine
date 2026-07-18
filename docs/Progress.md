@@ -1,16 +1,20 @@
 # Progress
 
-Last updated: after Phase 7 (Color Expansion Skills) was implemented — Heavy, Swift, Sleeper, and Trickster are all wired into the real simulation via the hook-interface architecture locked down in the Pre-Phase 7 session, plus the one flagged fix (the stale `src/types/Skill.ts` doc comment) made at the very start of this session, per that session's own note. **Phase 7 has not yet been reviewed or approved by the project owner** — the next session should open with that review.
+Last updated: after Phase 7 (Color Expansion Skills) was reviewed, tested, and approved by the project owner, and after a follow-up Pre-Phase 8 session settled the Physics primitive architecture ahead of any Weapon Clash implementation.
 
-**Update — Pre-Phase 8 cleanup session:** three small, documentation/naming-only changes were made after the above was written, at the project owner's request, directly responding to the Phase 7 review's own "architectural weaknesses" findings. None of them touch gameplay and none of them constitute Phase 7 approval — Phase 7 is still awaiting project owner review, exactly as the paragraph above says. See "Pre-Phase 8 — Architecture Cleanup," under Current Phase below, for the full account.
+**Update — Phase 7 approved.** The project owner has reviewed Phase 7 directly and tested it, with no errors. Phase 7 (Color Expansion Skills) is now considered complete, joining Phases 1–6 as fully approved work.
+
+**Update — Pre-Phase 8 cleanup session:** three small, documentation/naming-only changes were made after Phase 7 was implemented, at the project owner's request, directly responding to the Phase 7 review's own "architectural weaknesses" findings. None of them touch gameplay. See "Pre-Phase 8 — Architecture Cleanup," under Current Phase below, for the full account.
+
+**Update — Pre-Phase 8 Physics Primitive Architecture session:** following Phase 7's approval, the project owner requested a firmer architectural rule for the still-unimplemented `engine/core/Physics.ts`: it must operate only on generic geometric primitives (`Vector2`, `Circle`, `Segment`) and generic operations on them (Collision, Bounce, Reflection, Sweep Test, Intersection) — never on simulation concepts like Player, Weapon, Enemy, or Projectile. See "Pre-Phase 8 — Physics Primitive Architecture," under Current Phase below, for the full account. No code was written this session — `Physics.ts` remains an empty placeholder, exactly as before — this only sharpens the boundary the earlier Pre-Phase 8 cleanup session had already agreed to in principle.
 
 ## Current Phase
 
-**Phase 7 — Color Expansion Skills — implemented, awaiting project owner review.**
+**Phase 7 — Color Expansion Skills — implemented, reviewed, and approved by the project owner.**
 
-Heavy, Swift, Sleeper, and Trickster are all implemented exactly as documented in ColorExpansion.md and the Pre-Phase 7 architecture session, wired into the real simulation via `src/simulations/ColorExpansion/Skills.ts`'s local hook interface (`modifySpeed`, `modifyCapture`, `modifyPathChoice`). See "Phase 7 — Color Expansion Skills" below for the full account, judgment calls, and verification performed.
+Heavy, Swift, Sleeper, and Trickster are all implemented exactly as documented in ColorExpansion.md and the Pre-Phase 7 architecture session, wired into the real simulation via `src/simulations/ColorExpansion/Skills.ts`'s local hook interface (`modifySpeed`, `modifyCapture`, `modifyPathChoice`). See "Phase 7 — Color Expansion Skills" below for the full account, judgment calls, and verification performed. The project owner has since reviewed this phase directly and tested it with no errors — Phase 7 is complete.
 
-**Per the project owner's standing rule** (Roadmap.md, Development Rules: "Never continue to the next milestone without approval"), no Phase 8 (Weapon Clash MVP) work has been started or should be started until Phase 7 is reviewed.
+**Phase 8 (Weapon Clash MVP) has still not been started.** This is now a deliberate pause at the project owner's explicit instruction — to settle the `Physics.ts` architecture (see "Pre-Phase 8 — Physics Primitive Architecture" below) before any Weapon Clash code is written — rather than a gating requirement left over from Phase 7's review, which is now satisfied.
 
 ### Pre-Phase 7 fix (start of this session)
 
@@ -56,6 +60,43 @@ Prompted directly by the Phase 7 review's own "Did Phase 7 expose architectural 
 **Physics.ts boundary, decided ahead of Phase 8 (no code written yet):** reviewed and agreed before any Weapon Clash implementation begins, so Phase 8 doesn't have to make this call under time pressure. `engine/core/Physics.ts` is reserved for genuinely simulation-agnostic primitives only: vector math, circle-circle collision detection, wall/boundary collision, collision response (bounce/reflection), and continuous/swept collision to prevent tunnelling. Everything specific to Weapon Clash's own rules — weapon attachment and rotation, HP, damage, hit cooldown (a weapon must fully leave a player before it can hit them again), freeze-frame hit feedback, elimination, and any other rule from WeaponClash.md — belongs inside `src/simulations/WeaponClash/`, never in `engine/core/Physics.ts`, mirroring how Color Expansion's own BFS pathfinding (`Grid.ts`) stayed out of the engine entirely. This is a boundary decision, not an implementation — `Physics.ts` remains an empty placeholder until Phase 8 actually begins.
 
 **Verification:** this session touched documentation and doc-comments only (`src/types/Skill.ts`, `src/types/Simulation.ts`, `docs/Skills.md`, `src/simulations/ColorExpansion/Skills.ts`'s comments, and this file). No gameplay file changed. A type-parameter/parameter rename inside a type alias cannot affect compiled JS output or any call site's type-check result, since every call site already used positional arguments — so no `tsc -b` / `oxlint` re-run was strictly necessary, though the project owner may still want to run it as routine hygiene before Phase 8 begins.
+
+### Pre-Phase 8 — Physics Primitive Architecture
+
+Requested by the project owner immediately after Phase 7's approval, before any Weapon Clash code is written. Sharpens the `Physics.ts` boundary already agreed in the "Pre-Phase 8 — Architecture Cleanup" session above (engine/core/Physics.ts holds "genuinely simulation-agnostic primitives only") into an explicit primitive vocabulary and a pure-function contract.
+
+**The rule:** `Physics.ts` must never know what a Player, Weapon, Enemy, or Projectile is — not even indirectly, by importing a type from `/src/types` or from any simulation's own folder. It operates exclusively on:
+
+- **Vector2** — a 2D vector (x, y). The type itself lives in `/src/types` (used by the engine and, once built, by Weapon Clash — see Architecture.md's placement rule: shared concepts used by the engine or two-or-more simulations belong in `/types`). Vector math functions that operate on it (add, subtract, scale, normalize, rotate, dot) live in `/src/shared`, alongside `Math.ts`, since — like the rest of that folder — they have no engine-specific dependency.
+- **Circle** — center (`Vector2`) + `radius`, with an optional `mass` (defaulting to 1). Used for anything represented as a circle — Weapon Clash's players today (see WeaponClash.md, Players — "Represented by circles"), potentially other simulations later. Mass is included now, even though WeaponClash.md only specifies every player is the same size (not necessarily the same mass), because a correct elastic-collision formula naturally takes mass as a parameter — defaulting it to 1 costs nothing today and avoids having to rewrite the bounce math if a future simulation needs unevenly-weighted circles.
+- **Segment** — two endpoints (`Vector2`, `Vector2`). Needed because Weapon Clash's weapon is not a circle: WeaponClash.md's Weapons section describes it as "attached to player edge, rotates around player" with a fixed length — a rotating line, not a circle. Without `Segment`, the primitive vocabulary would only cover player-vs-player collision, not the actual weapon-hit mechanic the simulation is built around.
+- **Collision** — detection only, no response: circle×circle (player↔player), segment×circle (weapon↔player — the actual hit test), segment×segment (weapon↔weapon).
+- **Bounce** — dynamic-dynamic collision response (two moving circles exchanging velocity, e.g. player↔player).
+- **Reflection** — dynamic-static collision response (one moving circle off a fixed surface, e.g. off an arena wall).
+- **Sweep Test** — continuous collision detection, needed to prevent tunnelling at high velocity (see WeaponClash.md, Physics — "No tunnelling").
+- **Intersection** — raw geometric point/overlap queries with no response computed (a building block Collision/Sweep Test are built on, also usable standalone).
+
+**Every function is pure.** It takes primitives in and returns primitives out — never mutates a caller's object, never knows what the caller intends to do with the result. For example (illustrative signatures — not yet implemented; `Physics.ts` remains an empty placeholder):
+
+```ts
+resolveCircleCollision(a: Circle, velocityA: Vector2, b: Circle, velocityB: Vector2)
+  → { velocityA: Vector2, velocityB: Vector2 }
+
+segmentCircleIntersect(weapon: Segment, target: Circle)
+  → { hit: boolean, point?: Vector2 }
+```
+
+A simulation — Weapon Clash, in Phase 8 — converts its own state (its `WeaponPlayer`, its weapon) into these primitives, calls `Physics.ts`, reads the result back, and decides what it means (HP loss, freeze-frame feedback, elimination, reversed weapon rotation, etc.). `Physics.ts` itself never makes any of those decisions — this mirrors exactly how `Grid.ts`'s BFS returns candidate cells and `ColorExpansion.ts` decides what claiming one of them means (see `Grid.ts`; Architecture.md's Simulation section: "A simulation never modifies another simulation").
+
+**Folder placement, applying Architecture.md's existing placement rule** ("`/types` only if it has no runtime behaviour, `/shared` only if it has no engine-specific dependency, `/engine` only if it is part of the tick loop or physics/rendering pipeline itself"):
+
+- `Vector2` (interface only) → `/src/types`
+- Vector2 math functions (pure, no engine dependency) → `/src/shared`
+- `Circle`, `Segment`, and every Collision/Bounce/Reflection/Sweep-Test/Intersection function → `/src/engine/core/Physics.ts` itself
+
+**Not implemented this session.** `Physics.ts`, `Vector2`, and every function above remain unwritten — this session settled the vocabulary and contract only, exactly as the original `Physics.ts` boundary was agreed ahead of code in the prior Pre-Phase 8 session. `docs/Architecture.md`'s Engine and new Physics sections were updated to reflect this vocabulary so Phase 8 doesn't have to re-derive it under time pressure.
+
+**Verification:** documentation-only session — no code changed, so no `tsc -b` / `oxlint` / `vite build` run was needed.
 
 ## Completed Phases
 
@@ -131,7 +172,7 @@ Judgment calls made (flagged for review): the fixed spawn-corner winding order (
 
 **Rendering / UI wiring (that session)** — approved by the project owner as the condition for closing Phase 6. Implements exactly the five things requested: render the grid, render territory, render square players, run it through the existing `SimulationEngine`, and trigger the winner screen on completion. No Skills, no polish, no particles, no sound, no additional gameplay changes.
 
-- `src/shared/Constants.ts` — added `UNIVERSAL_ARENA_SIZE = 480`, the same placeholder pixel size the Phase 2 demo arena already used, now in one shared location (see Engine.md, Arena — "Same dimensions as every simulation") instead of duplicated locally.
+- `src/shared/Constants.ts` — added `UNIVERSAL_ARENA_SIZE = 480`, the same placeholder pixel size the Phase 2 demo arena already used, now in one shared location (see Engine.md, Arena — "Same dimensions for every simulation") instead of duplicated locally.
 - `src/engine/rendering/GridRenderer.ts` (**new**) — `drawGrid(ctx, grid, cellPixelSize, offset)`, a simulation-agnostic function drawing a `RenderableGrid` (a `size` plus a `cells[y][x]` matrix of hex colors or `null` for neutral). Knows nothing about players, ownership, or territory — mirrors `ArenaRenderer.ts` and `CharacterRenderer.ts` in staying purely a drawing function.
 - `src/engine/rendering/CharacterRenderer.ts` — added `drawCharacterSquare(ctx, character, x, y, size)` alongside the existing circle `drawCharacter`, matching ColorExpansion.md's Players section ("Represented by squares. Same size as one grid cell.").
 - `src/engine/rendering/Renderer.ts` — added `RenderableSquareCharacter` (a character positioned in grid-cell units, supporting fractional mid-transit positions) and `renderGridFrame(ctx, canvas, arena, arenaOffset, grid, squareCharacters)`, a second pipeline alongside the existing `renderFrame`: clear, letterbox, draw the arena, draw the colored grid, draw every player as a square. Still the only place drawing order is decided (see Architecture.md, Rendering).
@@ -217,7 +258,7 @@ Implemented Heavy, Swift, Sleeper, and Trickster exactly as documented in `Color
 - **Playtesting/balancing the six new placeholder values** — explicitly deferred, same as `gridSize`/`movementSpeedCellsPerSecond` in Phase 6 (see Roadmap.md, Phase 6 — "Do not spend time trying to perfectly balance the simulation before it exists"; the same principle applies here).
 - **Intro Screen skill descriptions** — see judgment calls above; deferred to Phase 11.
 
-**Awaiting project owner review.** Per Roadmap.md's Development Rules, Phase 8 should not begin until this phase is explicitly approved.
+**Reviewed and approved by the project owner**, tested with no errors. Per Roadmap.md's Development Rules, this satisfies the condition for beginning Phase 8 — though Phase 8 itself is intentionally still on hold, at the project owner's explicit instruction, until the Physics Primitive Architecture (see "Pre-Phase 8 — Physics Primitive Architecture" above) is settled and this document/Architecture.md are updated to reflect it, which this session has now done.
 
 ## Decisions Made Along the Way
 
@@ -239,14 +280,17 @@ Implemented Heavy, Swift, Sleeper, and Trickster exactly as documented in `Color
 - **(Phase 7)** Trickster's bonus rolls and rerolls happen in plain, explicit bookkeeping (`advanceSkillState`, `getInitialTricksterBonus`), never inside a hook itself, keeping every hook in this simulation a pure read of already-decided state.
 - **(Phase 7)** No separate "Skill" stat line was added to live/final statistics, since it would currently just repeat the Character name already shown; flagged instead of guessed at.
 - **(Phase 7)** Intro Screen skill descriptions remain unwired, deferred to Phase 11 (Shared Polish) as UI wiring outside Phase 7's gameplay scope.
+- **(Pre-Phase 8, Physics Primitive Architecture)** `Physics.ts` operates only on generic primitives (`Vector2`, `Circle`, `Segment`) and generic operations on them (Collision, Bounce, Reflection, Sweep Test, Intersection) — it never imports or references a simulation type (Player, Weapon, Enemy, Projectile). A simulation converts its own state into these primitives, calls Physics, and decides what the result means. This mirrors `Grid.ts`'s BFS returning candidate cells for `ColorExpansion.ts` to interpret.
+- **(Pre-Phase 8, Physics Primitive Architecture)** `Circle` carries an optional `mass` (default 1), even though Weapon Clash doesn't yet need unevenly-weighted circles, since a correct elastic-collision formula takes mass as a parameter anyway and this avoids a rewrite later.
+- **(Pre-Phase 8, Physics Primitive Architecture)** `Segment` was added to the primitive vocabulary alongside `Circle`, since Weapon Clash's rotating weapon (WeaponClash.md, Weapons) is a line attached to and rotating around a player, not a circle — `Circle` alone would only cover player↔player collision, not the weapon-hit mechanic the simulation is actually built around.
 
 ## For a New Chat
 
 Read Blueprint.md first, then this file, before anything else.
 
-Phase 1 through Phase 6 files are implemented and have been approved by the project owner in full — gameplay logic, rendering/UI wiring, and the post-review Config refactor (moving `playerSquareCellRatio` out of rendering code and into `ColorExpansion/Config.ts`) are all done and approved.
+Phase 1 through Phase 7 files are implemented and have been approved by the project owner in full — gameplay logic, rendering/UI wiring, the post-review Config refactor, and now all four Character Skills, are all done, tested, and approved.
 
-**Phase 7 (Color Expansion Skills) is now implemented but not yet reviewed by the project owner.** Heavy, Swift, Sleeper, and Trickster are all wired into the real simulation:
+**Phase 7 (Color Expansion Skills) is implemented, reviewed, and approved by the project owner** (tested with no errors). Heavy, Swift, Sleeper, and Trickster are all wired into the real simulation:
 
 - `src/simulations/ColorExpansion/Skills.ts` holds Color Expansion's local hook interface (`modifySpeed`, `modifyCapture`, `modifyPathChoice`) and all four characters' implementations, plus `advanceSkillState`/`getInitialTricksterBonus` for Trickster's non-hook bookkeeping.
 - `src/simulations/ColorExpansion/Grid.ts` gained `findPathChoiceTowardNearestNeutralCell`, exposing tie candidates for `modifyPathChoice`; the original `findNextStepTowardNearestNeutralCell` is now built on top of it and is behavior-identical to Phase 6.
@@ -256,9 +300,11 @@ Phase 1 through Phase 6 files are implemented and have been approved by the proj
 
 See "Phase 7 — Color Expansion Skills" above for the full account, every judgment call made, and the verification performed (`tsc -b` + `oxlint` clean; a headless multi-roster determinism/termination smoke test).
 
-**Per Roadmap.md's Development Rules ("Never continue to the next milestone without approval"), do not begin Phase 8 (Weapon Clash MVP) until Phase 7 is explicitly reviewed and approved by the project owner.**
+**Phase 8 (Weapon Clash MVP) has still not begun.** This is no longer a pending-review gate — Phase 7 is approved — it is now a deliberate pause at the project owner's explicit instruction, so the `Physics.ts` primitive architecture (see immediately below) could be settled before any Weapon Clash code is written.
 
-**A small Pre-Phase 8 cleanup session has since made three documentation/naming-only changes** (see "Pre-Phase 8 — Architecture Cleanup" above): `Skill<TState, TValue>` is now `Skill<TContext, TValue>`; `Skills.md` explicitly documents when a hook may consume the simulation's RNG; and `Simulation.ts` explicitly documents that `update()` may mutate state in place and return the same reference. None of this touches gameplay, and none of it constitutes Phase 7 approval. The `Physics.ts` boundary for Weapon Clash was also agreed this session, ahead of any Phase 8 code: generic collision/vector-math primitives only belong in `engine/core/Physics.ts`; every Weapon-Clash-specific rule (weapon attachment/rotation, HP, damage, hit cooldown, freeze frames, elimination) belongs in `src/simulations/WeaponClash/` instead.
+**A small Pre-Phase 8 cleanup session made three documentation/naming-only changes** (see "Pre-Phase 8 — Architecture Cleanup" above): `Skill<TState, TValue>` is now `Skill<TContext, TValue>`; `Skills.md` explicitly documents when a hook may consume the simulation's RNG; and `Simulation.ts` explicitly documents that `update()` may mutate state in place and return the same reference. The `Physics.ts` boundary for Weapon Clash was also agreed in that session, ahead of any Phase 8 code: generic collision/vector-math primitives only belong in `engine/core/Physics.ts`; every Weapon-Clash-specific rule (weapon attachment/rotation, HP, damage, hit cooldown, freeze frames, elimination) belongs in `src/simulations/WeaponClash/` instead.
+
+**A follow-up Pre-Phase 8 session (Physics Primitive Architecture) then made that boundary concrete** (see "Pre-Phase 8 — Physics Primitive Architecture" above): `Physics.ts`'s vocabulary is now `Vector2`, `Circle`, `Segment`, and pure Collision/Bounce/Reflection/Sweep-Test/Intersection functions — it never imports or references a Player, Weapon, Enemy, or Projectile type. `docs/Architecture.md` has been updated with a new Physics section documenting this, plus `Vector2` entries added to the `/src/types` and `/src/shared` folder listings. No code was written this session — `Physics.ts` remains an empty placeholder, and Phase 8 itself has still not started.
 
 Everything else under `src/engine/audio`, `src/engine/recording`, `src/simulations/WeaponClash`, and `src/engine/core/Physics.ts` is still an empty placeholder. A file existing does not mean it is implemented; check actual file contents, not just the file tree, before assuming any phase is complete.
 
@@ -266,7 +312,7 @@ Color Expansion is fully watchable end-to-end, now with all four Character Skill
 
 `SimulationEngine`, `StatisticsStore<TStats>` + `Ranking.ts`, `Config<T>`, `AspectRatio.ts`, and now `Random` are all exercised by a real simulation.
 
-Weapon Clash's own `Config.ts`, `Skills.ts`, `Weapon.ts`, and `WeaponClash.ts` (all still empty placeholders) are expected to follow the same pattern Color Expansion has now completed three times over — gameplay logic, then rendering/UI wiring, then (thanks to the Pre-Phase 7 session) architecture-and-spec-lock-in before Skills — once Phase 8 begins. Weapon Clash will define its own local hook interface, with its own hook names, entirely independent of Color Expansion's.
+Weapon Clash's own `Config.ts`, `Skills.ts`, `Weapon.ts`, and `WeaponClash.ts` (all still empty placeholders) are expected to follow the same pattern Color Expansion has now completed three times over — gameplay logic, then rendering/UI wiring, then architecture-and-spec-lock-in before Skills — once Phase 8 begins. Weapon Clash will define its own local hook interface, with its own hook names, entirely independent of Color Expansion's. It will also be the first simulation to convert its own state into `Physics.ts`'s primitives (its `WeaponPlayer` → `Circle`, its weapon → `Segment`) rather than passing simulation types into the engine directly — see "Pre-Phase 8 — Physics Primitive Architecture" above.
 
 "Shared Helpers," originally the third item under Phase 4, remains removed from Roadmap.md entirely — it isn't a deferred item, it's a rejected one (see Phase 4 above).
 
