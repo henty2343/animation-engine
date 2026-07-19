@@ -56,10 +56,13 @@ All nine Color Expansion balance values above are now implemented, but every one
 
 Weapon Clash
 
-- Base rotation speed.
-- Base damage.
-- Weapon lengths.
-- Weapon balancing.
+- Base rotation speed. — Temporary placeholder: 6 rad/s (see `src/simulations/WeaponClash/Config.ts`, `rotationSpeedRadiansPerSecond`). Tuned up from an initial, much slower first guess (1.5 rad/s) after a headless smoke test showed weapon↔player contact was so rare a 2-player match sometimes didn't resolve within 20 simulated minutes — see Progress.md, Phase 8 judgment calls. Still not playtested by the project owner.
+- Base damage. — Not a placeholder: WeaponClash.md states this literally ("Damage = 1"), implemented as `baseDamage: 1` in `Config.ts`.
+- Weapon lengths. — Temporary placeholder: 100px (see `Config.ts`, `weaponLength`). Same retuning story as rotation speed above. Not playtested.
+- Player radius. — Temporary placeholder: 18px (see `Config.ts`, `playerRadius`). Not explicitly tracked here before Phase 8, but needed for the same reason `gridSize` was for Color Expansion — flagged here now as a new placeholder.
+- Spawn velocity magnitude. — Temporary placeholder: 180px/s (see `Config.ts`, `spawnVelocityMagnitude`). Same retuning story as rotation speed above. Not playtested.
+- Weapon variant selection (Sword/Axe/Bow/Spear). — Still undecided; Phase 8 draws one generic weapon (a line) regardless of variant, since no Menu UI exists yet to choose one and no documented mechanic depends on which is drawn. See `WeaponClash.md`'s own TODO.
+- Weapon balancing. — Still open; all five numeric placeholders above are unplaytested and expected to change once the project owner watches real Phase 8 runs.
 
 ---
 

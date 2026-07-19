@@ -193,6 +193,8 @@ When freeze ends
 - Movement, rotation, and collision resume using the exact velocity, direction, and weapon rotation state the player had before the freeze.
 - Nothing is reset or recalculated. The simulation simply resumes.
 
+Not yet implemented as of Phase 8 (see Roadmap.md — Hit Freeze is explicitly a Phase 9 "Weapon Physics Polish" item, not part of Phase 8's MVP scope). Phase 8's weapon-hit handling deals damage on contact, gated by the "must fully leave before hitting again" cooldown rule below, but does not yet pause/flash either party.
+
 ---
 
 ## Elimination
@@ -212,6 +214,8 @@ Every Skill modifies existing mechanics.
 No Skill introduces new mechanics.
 
 See Skills.md for the general skill contract.
+
+Not yet implemented as of Phase 8 (see Roadmap.md, Phase 8 — "Ignore Character Skills"; Phase 10 is Weapon Clash's own Skills phase). The sections below describe the target design, same as Color Expansion's own Character Skills did before its Phase 7.
 
 ---
 
@@ -281,6 +285,17 @@ Repeat until one player remains. Every step below skips any player currently fro
 6. Remove eliminated players.
 7. Check if the simulation has ended.
 
+**Phase 8 scope** (see Roadmap.md, Phase 8 vs Phase 9 — "Weapon Physics Polish"): Phase 8 implements a simplified subset of this loop, matching exactly Phase 8's item list (Physics, Players, Weapons, HP, Damage, Arena collisions, Weapon rotation, Elimination, Win condition) and deliberately omitting every item Phase 9 names separately:
+
+1. Update Physics: weapon rotation (constant speed, non-eliminated players) and player movement + wall Reflection (non-eliminated players). No freeze timers exist yet (Hit Freeze is Phase 9).
+2. Resolve Player Collisions: circle×circle Collision + Bounce between all non-eliminated players.
+3. Resolve Weapon Hits: segment×circle Collision between each player's weapon and every other non-eliminated player; deals damage on new contact, gated by the "must fully leave before hitting again" rule. Checked in fixed player-slot order for determinism.
+4. Update player statistics (HP, damage, rotation speed).
+5. Remove eliminated players (HP ≤ 0).
+6. Check if the simulation has ended (one or zero non-eliminated players remain).
+
+Not yet implemented in Phase 8, deferred to Phase 9 per Roadmap.md: Weapon↔Weapon collision (step 3 above, "reverse both weapon rotation directions"), Hit Freeze (attacker/victim pause + flash), continuous collision / Sweep Test (anti-tunnelling), and strict overlap correction beyond what a single discrete Bounce response already provides.
+
 ---
 
 ## Statistics
@@ -344,7 +359,8 @@ Remaining players faded.
 
 ## TODO
 
-- Balance starting rotation speed.
-- Balance starting damage.
-- Decide initial weapon variants.
-- Future Character Skills.
+- Balance starting rotation speed. — Temporary placeholder implemented in Phase 8 (see `src/simulations/WeaponClash/Config.ts`, `rotationSpeedRadiansPerSecond`). Not playtested.
+- Balance starting damage. — WeaponClash.md already specifies this literally ("Damage = 1"); implemented as-is, not a guessed placeholder.
+- Decide initial weapon variants. — Still undecided which variant(s) are selectable; Phase 8 draws a single generic weapon (a rotating segment) with no variant-specific visual, since Weapon Variant selection is Menu-level UI wiring that hasn't been built (see SettingsPanel.tsx's still-unwired "Simulation Settings" section) and no documented mechanic depends on which variant is drawn. Flagged for review.
+- Future Character Skills. — Phase 10 (see Roadmap.md).
+- Weapon length, player radius, and spawn velocity magnitude — all temporary placeholders implemented in Phase 8 (see `Config.ts`). Not playtested.

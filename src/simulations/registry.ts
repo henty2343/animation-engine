@@ -8,11 +8,10 @@ import type { SimulationDescriptor } from '../types/SimulationDescriptor'
  * referenced here.
  *
  * Both entries below are fully documented (see docs/ColorExpansion.md and
- * docs/WeaponClash.md) but not yet implemented in code — their folders
- * (src/simulations/ColorExpansion, src/simulations/WeaponClash) are still
- * empty placeholders (Phase 6 and Phase 8 — see Roadmap.md). Listing them
- * here only lets the Menu display and select a simulation by name; it
- * does not make either one runnable.
+ * docs/WeaponClash.md). Color Expansion is fully implemented (Phase 6/7).
+ * Weapon Clash's gameplay MVP is now implemented (Phase 8 — see
+ * Roadmap.md); Character Skills for Weapon Clash remain out of scope
+ * until Phase 10.
  */
 export const COLOR_EXPANSION: SimulationDescriptor = {
   id: 'color-expansion',
