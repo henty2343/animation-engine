@@ -2,7 +2,7 @@ import type { Simulation } from '../../types/Simulation'
 import type { Player } from '../../types/Player'
 import type { Vector2 } from '../../types/Vector2'
 import { Random } from '../../shared/Random'
-import { add, scale } from '../../shared/Vector2'
+import { add, scale, normalize } from '../../shared/Vector2'
 import { UNIVERSAL_ARENA_SIZE } from '../../shared/Constants'
 import {
   circleCircleCollision,
@@ -30,6 +30,14 @@ import type { RenderableCharacter, RenderableWeapon } from '../../engine/renderi
  * A Weapon Clash player is the shared Player type (id, slot, character —
  * see types/Player.ts) plus the physics/combat state only this
  * simulation needs (see Architecture.md's one-canonical-location rule).
+ *
+ * Constant Movement Speed is a core gameplay rule, added after Phase 8's
+ * own review and not deferred to Phase 9 alongside genuine physics
+ * polish items: every living player's velocity is re-normalized back to
+ * the exact same configured speed at the end of every tick's physics —
+ * see `enforceConstantMovementSpeed` below, docs/WeaponClash.md's
+ * Movement Speed section, and docs/Progress.md's "Pre-Phase 9 —
+ * Constant Movement Speed" entry for the full account of why.
  */
 export interface WeaponClashPlayerState extends Player {
   position: Vector2
@@ -122,6 +130,51 @@ function drawSpawnPosition(
 }
 
 /**
+ * Re-normalizes every non-eliminated player's velocity back to the
+ * simulation's constant movement speed, preserving whatever direction
+ * this tick's physics (wall Reflection in Step 1, then player<->player
+ * Bounce in Step 2) left it pointing (see docs/WeaponClash.md, Movement
+ * Speed). This is a core gameplay rule, not Phase 9 polish: physics is
+ * still free to redirect a player every tick — that part is unchanged —
+ * but a player's speed may never permanently drift up or down the way
+ * an ordinary elastic Bounce would otherwise allow (see
+ * engine/core/Physics.ts's `bounceCircles`, which exchanges velocity
+ * components between two circles and can change either one's total
+ * speed, not just its direction).
+ *
+ * Degenerate case: an exact head-on Bounce with zero tangential
+ * component could, in theory, cancel a player's velocity to precisely
+ * {0, 0} — a vector with no direction to preserve. `normalize` reports
+ * this case with a zero-length result (see shared/Vector2.ts), handled
+ * here by drawing a fresh direction from the run's own seeded RNG (the
+ * same determinism pattern as every other random draw in this
+ * simulation — see createInitialState's own direction draw above)
+ * rather than silently leaving the player stationary, which would
+ * violate WeaponClash.md's "Never stop moving" (see Physics, Players).
+ * Effectively unreachable at today's placeholder configuration; handled
+ * defensively rather than assumed away. Drawing from `state.random` here
+ * keeps the whole tick deterministic for a given seed, same as every
+ * other RNG consumer in this file.
+ */
+function enforceConstantMovementSpeed(state: WeaponClashState, movementSpeed: number): void {
+  for (const player of state.players) {
+    if (player.eliminated) continue
+
+    const direction = normalize(player.velocity)
+    const isZeroLength = direction.x === 0 && direction.y === 0
+    const resolvedDirection = isZeroLength ? randomUnitVector(state.random) : direction
+
+    player.velocity = scale(resolvedDirection, movementSpeed)
+  }
+}
+
+/** A uniformly random unit vector, drawn from the given seeded RNG (see shared/Random.ts). */
+function randomUnitVector(random: Random): Vector2 {
+  const angle = random.nextFloat(0, Math.PI * 2)
+  return { x: Math.cos(angle), y: Math.sin(angle) }
+}
+
+/**
  * Builds a Weapon Clash Simulation<WeaponClashState> for a fixed roster
  * of 2–4 players (see Engine.md, Menu).
  */
@@ -131,7 +184,7 @@ export function createWeaponClashSimulation(players: Player[]): Simulation<Weapo
       const random = new Random(seed)
 
       const playerRadius = WEAPON_CLASH_CONFIG.get('playerRadius')
-      const spawnVelocityMagnitude = WEAPON_CLASH_CONFIG.get('spawnVelocityMagnitude')
+      const movementSpeed = WEAPON_CLASH_CONFIG.get('movementSpeedPixelsPerSecond')
       const startingHp = WEAPON_CLASH_CONFIG.get('startingHp')
       const baseDamage = WEAPON_CLASH_CONFIG.get('baseDamage')
       const rotationSpeed = WEAPON_CLASH_CONFIG.get('rotationSpeedRadiansPerSecond')
@@ -143,8 +196,12 @@ export function createWeaponClashSimulation(players: Player[]): Simulation<Weapo
         placedCircles.push({ center: position, radius: playerRadius })
 
         // Equal magnitude, random direction (see WeaponClash.md, Spawn).
+        // This is the same constant movement speed the player's velocity
+        // gets re-normalized back to every tick thereafter (see
+        // enforceConstantMovementSpeed below) — spawn just draws the
+        // first direction, it isn't a special one-time magnitude.
         const angle = random.nextFloat(0, Math.PI * 2)
-        const velocity = scale({ x: Math.cos(angle), y: Math.sin(angle) }, spawnVelocityMagnitude)
+        const velocity = scale({ x: Math.cos(angle), y: Math.sin(angle) }, movementSpeed)
 
         return {
           ...player,
@@ -169,6 +226,7 @@ export function createWeaponClashSimulation(players: Player[]): Simulation<Weapo
     update(state: WeaponClashState, deltaTimeMs: number): WeaponClashState {
       const playerRadius = WEAPON_CLASH_CONFIG.get('playerRadius')
       const weaponLength = WEAPON_CLASH_CONFIG.get('weaponLength')
+      const movementSpeed = WEAPON_CLASH_CONFIG.get('movementSpeedPixelsPerSecond')
 
       // Step 1: weapon rotation + movement/wall collision (non-eliminated players only).
       for (const player of state.players) {
@@ -203,7 +261,18 @@ export function createWeaponClashSimulation(players: Player[]): Simulation<Weapo
         }
       }
 
-      // Step 3: weapon hits (fixed attacker/victim order for determinism).
+      // Step 3: re-normalize every living player's velocity back to the
+      // constant configured movement speed (see docs/WeaponClash.md,
+      // Movement Speed). Runs after every velocity-affecting physics step
+      // this tick — wall Reflection in Step 1, player Bounce in Step 2 —
+      // so whatever direction those responses left a player facing is
+      // preserved, but any speed gained or lost along the way is
+      // discarded. Core gameplay rule from Phase 8 onward, not Phase 9
+      // polish (see docs/Progress.md, "Pre-Phase 9 — Constant Movement
+      // Speed").
+      enforceConstantMovementSpeed(state, movementSpeed)
+
+      // Step 4: weapon hits (fixed attacker/victim order for determinism).
       // Weapon <-> Weapon collision and Hit Freeze are Phase 9 — see this
       // file's own doc comment above.
       for (const attacker of state.players) {
@@ -228,7 +297,7 @@ export function createWeaponClashSimulation(players: Player[]): Simulation<Weapo
         }
       }
 
-      // Steps 5-6: elimination (see WeaponClash.md, Elimination — "Character disappears. No longer collides.").
+      // Steps 6-7: elimination (see WeaponClash.md, Elimination — "Character disappears. No longer collides.").
       for (const player of state.players) {
         if (!player.eliminated && player.hp <= 0) {
           player.eliminated = true
