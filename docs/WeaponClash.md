@@ -92,9 +92,11 @@ Rule
 - This prevents speed from drifting up or down over the course of a run, no matter how many collisions a player is involved in — an ordinary elastic Bounce can otherwise change a circle's total speed, not just its direction (see `engine/core/Physics.ts`, `bounceCircles`).
 - This is a core gameplay rule, in effect from Phase 8 onward — not a Phase 9 polish item.
 
-Degenerate case
+Safeguard, not gameplay
 
-- An exact head-on collision with zero tangential component could, in theory, cancel a player's velocity to precisely zero, which has no direction to preserve. When this happens, a fresh direction is drawn from the run's own seeded RNG instead of leaving the player stationary, which would violate "Never stop moving" (see Physics, above). Effectively unreachable at today's placeholder configuration values; handled defensively rather than assumed away.
+- Under normal play, a player's velocity should never actually reach exactly zero — this is not part of the intended physics model. The theoretical possibility (an exact head-on collision with zero tangential component, which would otherwise cancel a player's velocity to precisely zero and leave nothing for the normalization above to preserve a direction from) is guarded against purely as a defensive safeguard against an extremely rare numerical/degenerate edge case, not as an expected or designed-for gameplay situation.
+- If it were ever triggered, a fresh direction is drawn from the run's own seeded RNG rather than leaving the player stationary, which would violate "Never stop moving" (see Physics, above). Because that draw still comes from the simulation's seeded RNG, this fallback remains fully deterministic for a given seed even though it is exceptional — it is a fail-safe branch, not a source of randomness or nondeterminism in the ordinary case.
+- Effectively unreachable at today's placeholder configuration values; handled defensively rather than assumed away or left to silently misbehave.
 
 ---
 

@@ -142,19 +142,25 @@ function drawSpawnPosition(
  * components between two circles and can change either one's total
  * speed, not just its direction).
  *
- * Degenerate case: an exact head-on Bounce with zero tangential
- * component could, in theory, cancel a player's velocity to precisely
- * {0, 0} — a vector with no direction to preserve. `normalize` reports
- * this case with a zero-length result (see shared/Vector2.ts), handled
- * here by drawing a fresh direction from the run's own seeded RNG (the
- * same determinism pattern as every other random draw in this
- * simulation — see createInitialState's own direction draw above)
- * rather than silently leaving the player stationary, which would
- * violate WeaponClash.md's "Never stop moving" (see Physics, Players).
- * Effectively unreachable at today's placeholder configuration; handled
- * defensively rather than assumed away. Drawing from `state.random` here
- * keeps the whole tick deterministic for a given seed, same as every
- * other RNG consumer in this file.
+ * Safeguard, not gameplay: under normal play this function only ever
+ * rescales an existing, non-zero direction — a player's velocity should
+ * never actually reach exactly {0, 0}. The `isZeroLength` branch below
+ * exists purely as a defensive guard against an extremely rare
+ * numerical/degenerate edge case (in principle, an exact head-on Bounce
+ * with zero tangential component, which `normalize` would otherwise
+ * report as a direction-less zero-length vector — see shared/Vector2.ts)
+ * and is not part of the intended physics model. It is not expected to
+ * trigger in ordinary gameplay at today's placeholder configuration;
+ * it exists so that if floating-point precision or an unanticipated
+ * combination of collisions ever did produce one, the simulation fails
+ * safe (drawing a fresh direction) rather than silently leaving a
+ * player stationary, which would violate WeaponClash.md's "Never stop
+ * moving" (see Physics, Players). The fallback still draws from
+ * `state.random` — the run's own seeded RNG, the same instance every
+ * other random draw in this file already consumes (see
+ * createInitialState's own direction draw above) — so even this
+ * exceptional path stays fully deterministic for a given seed; it is a
+ * defensive branch, not a source of nondeterminism.
  */
 function enforceConstantMovementSpeed(state: WeaponClashState, movementSpeed: number): void {
   for (const player of state.players) {
@@ -168,7 +174,12 @@ function enforceConstantMovementSpeed(state: WeaponClashState, movementSpeed: nu
   }
 }
 
-/** A uniformly random unit vector, drawn from the given seeded RNG (see shared/Random.ts). */
+/**
+ * A uniformly random unit vector, drawn from the given seeded RNG (see
+ * shared/Random.ts). Only ever called from the defensive zero-velocity
+ * branch in `enforceConstantMovementSpeed` above — not part of normal
+ * per-tick movement, which always has a real direction to preserve.
+ */
 function randomUnitVector(random: Random): Vector2 {
   const angle = random.nextFloat(0, Math.PI * 2)
   return { x: Math.cos(angle), y: Math.sin(angle) }
