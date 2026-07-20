@@ -1,5 +1,5 @@
 import type { Vector2 } from '../../types/Vector2'
-import { add, subtract, scale, length, dot } from '../../shared/Vector2'
+import { add, subtract, scale, length, dot, cross } from '../../shared/Vector2'
 import { clamp } from '../../shared/Math'
 
 /**
@@ -14,30 +14,25 @@ import { clamp } from '../../shared/Math'
  * function below, reads the result, and decides what it means (damage,
  * elimination, etc.) — this file never makes any of those decisions.
  *
- * **Phase 8 scope** (see Roadmap.md, Phase 8 vs Phase 9 — "Weapon
- * Physics Polish"): this file implements exactly what Phase 8's item
- * list needs — Circle, Segment, circle×circle Collision, segment×circle
- * Collision, Bounce, and Reflection. Two primitives from the originally
- * agreed vocabulary are deliberately NOT yet implemented, because they
- * belong to Phase 9 by Roadmap.md's own item list, not Phase 8:
- *
- * - `segment×segment` Collision (weapon↔weapon detection) — Phase 9
- *   names this directly as "Weapon bounce".
- * - Sweep Test (continuous collision detection) — Phase 9 names this
- *   directly as "No tunnelling".
- *
- * See docs/Progress.md, "Phase 8 — Weapon Clash MVP" for the full
- * account of this scope decision.
+ * **Phase 9** (see Roadmap.md, Phase 9 — "Weapon Physics Polish";
+ * Progress.md's "Phase 9 — Weapon Physics Polish" for the full account)
+ * completed this file's primitive set: `sweepCircleCollision` (continuous
+ * circle×circle collision, for anti-tunnelling), `correctCircleOverlap`
+ * (positional overlap-separation response — a new category beyond the
+ * original Pre-Phase 8 vocabulary, added because none of
+ * Collision/Bounce/Reflection/Sweep Test computes a *positional*
+ * response), and `segmentSegmentIntersect` (discrete segment×segment
+ * collision, the weapon↔weapon hit test).
  */
 
 /**
  * A circle: center + radius, with an optional mass (defaulting to 1).
  * WeaponClash.md only specifies every player is the same size, not
  * necessarily the same mass, but a correct elastic-collision Bounce
- * formula naturally takes mass as a parameter — a future, effectively
- * infinite mass is expected to represent a frozen player once Hit Freeze
- * is implemented in Phase 9 (see WeaponClash.md, Hit Freeze), so the
- * parameter is included now rather than bolted on later.
+ * formula naturally takes mass as a parameter — a frozen player is given
+ * an effectively infinite mass to represent it as a static, unmovable
+ * obstacle (see WeaponClash.md, Hit Freeze, and WeaponClash.ts's
+ * `STATIC_OBSTACLE_MASS`, implemented in Phase 9).
  */
 export interface Circle {
   center: Vector2
@@ -162,15 +157,17 @@ export interface BounceResult {
  * resolved along the line connecting their centers (the tangential
  * velocity component, perpendicular to that line, is left unchanged for
  * each circle). Used for Weapon Clash's player↔player collision (see
- * WeaponClash.md, Player Collision — "Bounce").
+ * WeaponClash.md, Player Collision — "Bounce") and, as of Phase 9,
+ * weapon↔weapon collision (see WeaponClash.md, Weapon Collision —
+ * "Bounce players apart").
  *
- * Respects each Circle's `mass` (defaulting to 1). This is what will let
- * Phase 9's Hit Freeze give a frozen player an effectively infinite mass
- * and get a correct "static obstacle" result for free — as mass A grows
- * very large relative to mass B, A's post-collision velocity approaches
- * its pre-collision velocity (unchanged) and B's approaches a full
- * reflection off a static object — without this function needing to
- * know anything about "frozen" at all.
+ * Respects each Circle's `mass` (defaulting to 1). As of Phase 9, this
+ * is exercised for real: a frozen player's Circle is given an
+ * effectively infinite mass (see WeaponClash.ts's `STATIC_OBSTACLE_MASS`)
+ * so that, as mass A grows very large relative to mass B, A's
+ * post-collision velocity approaches its pre-collision velocity
+ * (unchanged) and B's approaches a full reflection off a static object —
+ * without this function needing to know anything about "frozen" at all.
  */
 export function bounceCircles(
   a: Circle,
@@ -199,4 +196,207 @@ export function bounceCircles(
     velocityA: add(aTangentVelocity, scale(normal, aNormalSpeedAfter)),
     velocityB: add(bTangentVelocity, scale(normal, bNormalSpeedAfter)),
   }
+}
+
+/** Result of a continuous (swept) circle-circle collision test (see sweepCircleCollision below). */
+export interface SweepCollisionResult {
+  colliding: boolean
+  /**
+   * Time within `[0, deltaTime]` at which the two circles first touch,
+   * assuming each moves at its given constant velocity for the whole
+   * interval. Meaningless when `colliding` is false.
+   */
+  timeOfImpact: number
+  /**
+   * Unit vector from `a`'s center toward `b`'s center at the moment of
+   * impact. Meaningless when `colliding` is false.
+   */
+  normal: Vector2
+}
+
+/**
+ * Continuous collision detection between two moving circles over a time
+ * interval `deltaTime` (see Architecture.md, Physics — "Sweep Test —
+ * continuous collision detection, needed to prevent tunnelling at high
+ * velocity"; Roadmap.md, Phase 9 — "No tunnelling"). Detection only, no
+ * response computed — the same division of labor as
+ * `circleCircleCollision` above (a caller runs `bounceCircles`
+ * separately once it knows a collision occurred).
+ *
+ * `circleCircleCollision` only samples the two circles' positions at a
+ * single instant; a fast-enough pair can pass through each other
+ * entirely within one tick and never appear to overlap at either the
+ * start or end of that tick's motion ("tunnelling"). This function
+ * instead solves for the earliest time both circles' positions —
+ * advanced along their given constant velocities — bring their centers
+ * exactly `a.radius + b.radius` apart, by treating the problem in `b`'s
+ * frame relative to `a` (relative position `p = b.center - a.center`,
+ * relative velocity `v = velocityB - velocityA`) and solving the
+ * resulting quadratic `|p + v*t|^2 = (a.radius + b.radius)^2` for the
+ * smallest non-negative root.
+ *
+ * Callers are expected to only invoke this once `circleCircleCollision`
+ * on the same pair's *current* positions has already reported no
+ * overlap — this function does not itself special-case an
+ * already-overlapping pair at `t = 0` (see WeaponClash.ts's own call
+ * site, which runs the discrete check first and only falls through to
+ * this one when it comes back clean).
+ */
+export function sweepCircleCollision(
+  a: Circle,
+  velocityA: Vector2,
+  b: Circle,
+  velocityB: Vector2,
+  deltaTime: number,
+): SweepCollisionResult {
+  const noCollision: SweepCollisionResult = {
+    colliding: false,
+    timeOfImpact: 0,
+    normal: { x: 1, y: 0 },
+  }
+
+  const relativePosition = subtract(b.center, a.center)
+  const relativeVelocity = subtract(velocityB, velocityA)
+  const combinedRadius = a.radius + b.radius
+
+  const velocitySquared = dot(relativeVelocity, relativeVelocity)
+  if (velocitySquared === 0) {
+    return noCollision // no relative motion — never converges within any finite interval
+  }
+
+  // Solve |relativePosition + relativeVelocity * t|^2 = combinedRadius^2,
+  // i.e. velocitySquared*t^2 + 2*(relativePosition . relativeVelocity)*t
+  // + (|relativePosition|^2 - combinedRadius^2) = 0.
+  const linearTerm = 2 * dot(relativePosition, relativeVelocity)
+  const constantTerm = dot(relativePosition, relativePosition) - combinedRadius * combinedRadius
+  const discriminant = linearTerm * linearTerm - 4 * velocitySquared * constantTerm
+
+  if (discriminant < 0) {
+    return noCollision // paths never come within combinedRadius of each other
+  }
+
+  const sqrtDiscriminant = Math.sqrt(discriminant)
+  const earliestRoot = (-linearTerm - sqrtDiscriminant) / (2 * velocitySquared)
+  const latestRoot = (-linearTerm + sqrtDiscriminant) / (2 * velocitySquared)
+
+  // The smaller root is when the circles first touch (entering contact);
+  // a negative value means that moment is already in the past relative
+  // to this interval's start, which callers handle themselves (see this
+  // function's own doc comment on when to call it).
+  const timeOfImpact = Math.min(earliestRoot, latestRoot)
+
+  if (timeOfImpact < 0 || timeOfImpact > deltaTime) {
+    return noCollision
+  }
+
+  const positionAAtImpact = add(a.center, scale(velocityA, timeOfImpact))
+  const positionBAtImpact = add(b.center, scale(velocityB, timeOfImpact))
+  const deltaAtImpact = subtract(positionBAtImpact, positionAAtImpact)
+  const distanceAtImpact = length(deltaAtImpact)
+  const normal = distanceAtImpact === 0 ? { x: 1, y: 0 } : scale(deltaAtImpact, 1 / distanceAtImpact)
+
+  return { colliding: true, timeOfImpact, normal }
+}
+
+/** Result of a circle-circle overlap correction (see correctCircleOverlap below). */
+export interface OverlapCorrection {
+  /** Position offset to add to `a`'s center to help resolve the overlap. */
+  correctionA: Vector2
+  /** Position offset to add to `b`'s center to help resolve the overlap. */
+  correctionB: Vector2
+}
+
+/**
+ * Computes the position offsets needed to separate two overlapping
+ * circles along their contact normal (see Architecture.md, Physics, and
+ * Roadmap.md's Phase 9 "No player overlap" / "No weapon overlap" items).
+ * `bounceCircles` above only changes velocity — an ordinary discrete-time
+ * collision response like that can still leave two circles visually
+ * interpenetrating for a tick or two if they were already overlapping at
+ * the moment the bounce was computed (see `circleCircleCollision`'s own
+ * `overlap` field). This function computes a purely positional
+ * correction to go alongside that velocity response.
+ *
+ * This is a new primitive category, added in Phase 9, beyond the
+ * original Pre-Phase 8 vocabulary (Collision/Bounce/Reflection/Sweep
+ * Test/Intersection) — see Progress.md's "Phase 9 — Weapon Physics
+ * Polish" for why none of those five categories already covers a
+ * positional response.
+ *
+ * The correction is split between the two circles in proportion to the
+ * *other* circle's mass (mirroring `bounceCircles`' own mass-weighting),
+ * so a much heavier — or, once Hit Freeze assigns a frozen player an
+ * effectively infinite mass (see WeaponClash.ts), an immovable — circle
+ * is corrected by a negligible amount while the lighter one absorbs
+ * nearly all of the separation. Returns a zero offset for both circles
+ * if they aren't actually overlapping.
+ */
+export function correctCircleOverlap(a: Circle, b: Circle): OverlapCorrection {
+  const info = circleCircleCollision(a, b)
+
+  if (!info.colliding) {
+    return { correctionA: { x: 0, y: 0 }, correctionB: { x: 0, y: 0 } }
+  }
+
+  const massA = massOf(a)
+  const massB = massOf(b)
+  const totalMass = massA + massB
+
+  const shareOfOverlapForA = massB / totalMass
+  const shareOfOverlapForB = massA / totalMass
+
+  return {
+    correctionA: scale(info.normal, -info.overlap * shareOfOverlapForA),
+    correctionB: scale(info.normal, info.overlap * shareOfOverlapForB),
+  }
+}
+
+/** Result of a segment-segment intersection test (see segmentSegmentIntersect below). */
+export interface SegmentIntersectionResult {
+  intersecting: boolean
+  /** Where the two segments cross. Meaningless when `intersecting` is false. */
+  point: Vector2
+}
+
+/**
+ * Detects whether two line segments intersect — detection only, no
+ * response computed (see Architecture.md, Physics — "Collision —
+ * detection only, no response: circle×circle, segment×circle,
+ * segment×segment"). This is Weapon Clash's weapon↔weapon hit test (see
+ * WeaponClash.md, Weapon Collision): each player's rotating weapon
+ * Segment against every other player's.
+ *
+ * Standard parametric line-segment intersection: segment `a` is
+ * `a.start + t*(a.end - a.start)` for `t` in [0,1], segment `b` is
+ * `b.start + u*(b.end - b.start)` for `u` in [0,1]; solving for where
+ * they coincide reduces to a system solved entirely with the 2D scalar
+ * cross product (see shared/Vector2.ts's `cross`). Parallel segments
+ * (including the collinear-overlap case) are reported as not
+ * intersecting — two rotating, finite-length weapons happening to be
+ * exactly parallel at the instant of a discrete per-tick check is a
+ * measure-zero case not worth a dedicated collinear-overlap branch for
+ * this project's needs (see Progress.md's Phase 9 judgment calls, and
+ * WeaponClash.md's Weapon Collision section, for why no continuous/swept
+ * version of this test was implemented either).
+ */
+export function segmentSegmentIntersect(a: Segment, b: Segment): SegmentIntersectionResult {
+  const noIntersection: SegmentIntersectionResult = { intersecting: false, point: { x: 0, y: 0 } }
+
+  const r = subtract(a.end, a.start)
+  const s = subtract(b.end, b.start)
+  const rCrossS = cross(r, s)
+
+  if (rCrossS === 0) {
+    return noIntersection // parallel (or collinear) — see doc comment above
+  }
+
+  const startDelta = subtract(b.start, a.start)
+  const t = cross(startDelta, s) / rCrossS
+  const u = cross(startDelta, r) / rCrossS
+
+  if (t < 0 || t > 1 || u < 0 || u > 1) {
+    return noIntersection
+  }
+
+  return { intersecting: true, point: add(a.start, scale(r, t)) }
 }

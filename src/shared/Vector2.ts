@@ -45,6 +45,24 @@ export function dot(a: Vector2, b: Vector2): number {
   return a.x * b.x + a.y * b.y
 }
 
+/**
+ * The 2D "cross product" — really the scalar z-component of the 3D cross
+ * product of `(a.x, a.y, 0)` and `(b.x, b.y, 0)`. Positive when `b` is
+ * counter-clockwise from `a`, negative when clockwise, zero when
+ * parallel (or either vector is zero-length).
+ *
+ * Added in Phase 9 (see Progress.md, "Phase 9 — Weapon Physics Polish")
+ * alongside `engine/core/Physics.ts`'s new `segmentSegmentIntersect`,
+ * which is its first consumer — the standard parametric line-segment
+ * intersection test reduces to a small system solved entirely with this
+ * one operation. No engine-specific dependency, so it lives here
+ * alongside this file's other pure Vector2 math, following the same
+ * placement logic as everything else in `/src/shared`.
+ */
+export function cross(a: Vector2, b: Vector2): number {
+  return a.x * b.y - a.y * b.x
+}
+
 /** Rotates `v` by `angleRadians` (counter-clockwise, standard screen-space convention with a flipped y-axis notwithstanding — this is a pure math rotation, not screen-aware). */
 export function rotate(v: Vector2, angleRadians: number): Vector2 {
   const cos = Math.cos(angleRadians)

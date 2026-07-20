@@ -17,6 +17,18 @@ export interface RenderableCharacter {
   character: Character
   x: number
   y: number
+  /**
+   * Whether to draw this character mid Hit Freeze damage flash instead
+   * of its own color (see WeaponClash.md, Hit Freeze — "Both flash
+   * white... for the freeze duration"). Added in Phase 9. Optional and
+   * generic on purpose: this file and CharacterRenderer.ts have no idea
+   * it corresponds to "just got hit" — they only know how to draw a
+   * circle in one of two colors depending on a boolean a simulation
+   * supplies (see WeaponClash.ts's `mapWeaponClashStateToRenderables`).
+   * Simulations with no such concept (the Phase 2 demo, Color
+   * Expansion's square characters below) simply omit it.
+   */
+  isFlashing?: boolean
 }
 
 /**
@@ -31,10 +43,7 @@ export interface RenderableSquareCharacter {
 
 /**
  * A weapon positioned for drawing, in the same arena-local pixel space
- * as `RenderableCharacter` (see renderCircleFrame below). Introduced in
- * Phase 8 for Weapon Clash (see docs/WeaponClash.md, Weapons) — an
- * engine/rendering-only concept, not a simulation state type, mirroring
- * `RenderableCharacter`/`RenderableSquareCharacter` above.
+ * as `RenderableCharacter` (see renderCircleFrame below).
  */
 export interface RenderableWeapon {
   color: string
@@ -62,8 +71,8 @@ export function renderFrame(
 
   drawArena(ctx, arena, arenaOffset)
 
-  for (const { character, x, y } of characters) {
-    drawCharacter(ctx, character, x + arenaOffset.x, y + arenaOffset.y, CHARACTER_RADIUS)
+  for (const { character, x, y, isFlashing } of characters) {
+    drawCharacter(ctx, character, x + arenaOffset.x, y + arenaOffset.y, CHARACTER_RADIUS, isFlashing)
   }
 }
 
@@ -95,23 +104,16 @@ export function renderGridFrame(
 }
 
 /**
- * The rendering pipeline for physics-driven, circle-based simulations —
- * introduced in Phase 8 for Weapon Clash (see docs/WeaponClash.md,
- * Players — "Represented by circles"). Mirrors renderFrame's and
- * renderGridFrame's responsibilities exactly — clear, letterbox, draw
- * the arena — then draws every weapon (as a line, underneath), then
- * every player (as a circle, on top, via the existing drawCharacter).
- * Weapons are drawn before characters so a weapon's rotating line is
- * always visible rather than potentially hidden beneath a player's
- * circle at the moment it's pointing back over its own wielder.
+ * The rendering pipeline for physics-driven, circle-based simulations
+ * (Weapon Clash — see docs/WeaponClash.md, Players). Mirrors
+ * renderFrame's and renderGridFrame's responsibilities exactly — clear,
+ * letterbox, draw the arena — then draws every weapon (as a line,
+ * underneath), then every player (as a circle, on top).
  *
- * `characterRadius` is a caller-supplied parameter rather than the
- * demo's hardcoded CHARACTER_RADIUS constant, since Weapon Clash's own
- * circle size comes from its own Config (see
- * simulations/WeaponClash/Config.ts's `playerRadius`) — mirroring
- * renderGridFrame's own `squareSizeRatio` parameter for the identical
- * reason (Architecture.md, Configuration: "The engine never defines
- * simulation settings").
+ * Passes each RenderableCharacter's `isFlashing` flag through to
+ * drawCharacter (Phase 9) so a player mid Hit Freeze renders in the
+ * flash color instead of its own — see RenderableCharacter's own doc
+ * comment above.
  */
 export function renderCircleFrame(
   ctx: CanvasRenderingContext2D,
@@ -137,7 +139,7 @@ export function renderCircleFrame(
     })
   }
 
-  for (const { character, x, y } of characters) {
-    drawCharacter(ctx, character, x + arenaOffset.x, y + arenaOffset.y, characterRadius)
+  for (const { character, x, y, isFlashing } of characters) {
+    drawCharacter(ctx, character, x + arenaOffset.x, y + arenaOffset.y, characterRadius, isFlashing)
   }
 }

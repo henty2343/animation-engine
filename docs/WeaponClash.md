@@ -79,6 +79,8 @@ Velocity
 - Velocity's magnitude (speed) is never permanently changed by collision response. After every tick's physics has fully resolved, every living player's velocity is re-normalized back to the same constant movement speed, preserving whatever direction that tick's physics produced — see Movement Speed, below.
 - Whatever velocity results at the end of a tick, after every collision response and the movement-speed normalization for that tick have run, is exactly what carries into the next tick. There is no separate "next" velocity buffer.
 
+**Anti-tunnelling (Phase 9).** "No tunnelling" above is enforced for player↔player collision via continuous collision detection: alongside the ordinary end-of-tick overlap check, each pair of players is also checked with a swept circle×circle test (see `engine/core/Physics.ts`, `sweepCircleCollision`) using each player's pre-movement position and this tick's velocity. This catches a fast-enough pair that would otherwise pass through each other within a single tick without ever appearing to overlap at either the tick's start or end. See `src/simulations/WeaponClash/WeaponClash.ts`'s Step 2 for the exact mechanism, and Progress.md's "Phase 9 — Weapon Physics Polish" for the full account. Wall collision (`reflectOffWall`) does not need an equivalent continuous check: its per-axis clamp-and-reflect already corrects a post-move position regardless of how far past the wall a single tick's motion carried it, provided that motion doesn't also cross the opposite wall in the same tick — unreachable at this simulation's documented speeds and arena size.
+
 ---
 
 ## Movement Speed
@@ -87,8 +89,8 @@ Every player moves at exactly the same constant speed for the entire simulation 
 
 Rule
 
-- Physics still decides *direction* every tick — wall reflections and player↔player (and, once implemented in Phase 9, weapon↔weapon) bounces still change which way a player is moving, exactly as before.
-- Physics never permanently changes a player's *speed*. Once all of a tick's physics has resolved, every non-eliminated player's velocity is normalized back to the exact configured movement speed, in whatever direction that tick's physics left it pointing.
+- Physics still decides *direction* every tick — wall reflections and player↔player (and, as of Phase 9, weapon↔weapon) bounces still change which way a player is moving, exactly as before.
+- Physics never permanently changes a player's *speed*. Once all of a tick's physics has resolved, every non-frozen, non-eliminated player's velocity is normalized back to the exact configured movement speed, in whatever direction that tick's physics left it pointing. A frozen player's velocity is left untouched instead (see Hit Freeze) — it isn't moving regardless, and must resume with its exact pre-freeze velocity once the freeze ends.
 - This prevents speed from drifting up or down over the course of a run, no matter how many collisions a player is involved in — an ordinary elastic Bounce can otherwise change a circle's total speed, not just its direction (see `engine/core/Physics.ts`, `bounceCircles`).
 - This is a core gameplay rule, in effect from Phase 8 onward — not a Phase 9 polish item.
 
@@ -129,7 +131,7 @@ Default
 
 - Same rotation speed for everyone.
 
-Rotation is only modified by Character Skills.
+Rotation is only modified by Character Skills, and, as of Phase 9, by Weapon Collision (see below), which reverses it.
 
 A frozen player's weapon does not rotate for the duration of the freeze (see Hit Freeze).
 
@@ -143,7 +145,9 @@ Player ↔ Player
 - Never overlap.
 - No damage.
 
-A currently-frozen player acts as a static obstacle in this collision (see Hit Freeze): a still-moving player bounces off them normally; the frozen player never moves or changes velocity.
+A currently-frozen player acts as a static obstacle in this collision (see Hit Freeze): a still-moving player bounces off them normally; the frozen player never moves or changes velocity. This is the authoritative rule for Player Collision — see the Simulation Loop section's own note about resolving an inconsistency in how this step was previously summarized there.
+
+**Overlap correction (Phase 9).** Bounce alone only changes velocity; two circles already touching (or slightly interpenetrating) when a collision is detected can still visually overlap for a tick or two afterward. Player Collision additionally applies a positional correction (see `engine/core/Physics.ts`, `correctCircleOverlap`) splitting the separation between the two players in proportion to the *other* player's mass — so a frozen (effectively infinite-mass) player is corrected by a negligible amount while the still-moving player absorbs nearly all of it, consistent with "the frozen player never moves."
 
 ---
 
@@ -157,6 +161,8 @@ Weapon ↔ Weapon
 - Weapons never tunnel.
 
 A currently-frozen player is excluded from this collision entirely (see Hit Freeze).
+
+**Implementation note (Phase 9).** Weapon↔weapon overlap is detected with a discrete segment×segment intersection test (see `engine/core/Physics.ts`, `segmentSegmentIntersect`), re-checked every tick — unlike player↔player collision (see Physics, above), no continuous/swept test is implemented for rotating weapon segments: a true continuous sweep for two independently rotating, translating segments has no simple closed-form solution, and at this simulation's documented rotation speeds and tick rate, a per-tick discrete check is a reasonable, if not airtight, approximation of "never tunnel." Flagged in Todo.md for review. WeaponClash.md also documents no cooldown for repeated weapon↔weapon contact (unlike Weapon Hit's explicit "must fully leave" rule below) — a pair of weapons whose overlap persists across several consecutive ticks will bounce and reverse rotation on every one of those ticks. Also flagged in Todo.md.
 
 ---
 
@@ -212,7 +218,9 @@ When freeze ends
 - Movement, rotation, and collision resume using the exact velocity, direction, and weapon rotation state the player had before the freeze.
 - Nothing is reset or recalculated. The simulation simply resumes.
 
-Not yet implemented as of Phase 8 (see Roadmap.md — Hit Freeze is explicitly a Phase 9 "Weapon Physics Polish" item, not part of Phase 8's MVP scope). Phase 8's weapon-hit handling deals damage on contact, gated by the "must fully leave before hitting again" cooldown rule below, but does not yet pause/flash either party.
+**Implemented in Phase 9** (see Roadmap.md — Hit Freeze was explicitly deferred from Phase 8's MVP scope to Phase 9's "Weapon Physics Polish"; see Progress.md's "Phase 9 — Weapon Physics Polish" for the full account). Duration is `hitFreezeDurationMs` in `src/simulations/WeaponClash/Config.ts` (100ms — a literal spec value, not a placeholder, exactly like `startingHp`/`baseDamage`). Tracked per player as a plain countdown (`freezeRemainingMs`), decremented once per tick before anything else that tick runs (see Simulation Loop, Step 1a) so a freeze that expires exactly this tick already allows that player to act again this same tick, matching "the simulation simply resumes" above.
+
+**Damage flash.** "Both flash white... for the freeze duration" is implemented by mapping each frozen player's state to a generic `isFlashing` flag on its renderable shape (see `engine/rendering/Renderer.ts`'s `RenderableCharacter`), drawn in a flash color (`HIT_FLASH_COLOR` in `engine/rendering/CharacterRenderer.ts`) instead of the character's own color for exactly as long as `freezeRemainingMs > 0` — so the flash and the freeze always start and end on the same tick, by construction.
 
 ---
 
@@ -234,7 +242,7 @@ No Skill introduces new mechanics.
 
 See Skills.md for the general skill contract.
 
-Not yet implemented as of Phase 8 (see Roadmap.md, Phase 8 — "Ignore Character Skills"; Phase 10 is Weapon Clash's own Skills phase). The sections below describe the target design, same as Color Expansion's own Character Skills did before its Phase 7.
+Not yet implemented (see Roadmap.md, Phase 10 — Weapon Clash's own Skills phase). The sections below describe the target design, same as Color Expansion's own Character Skills did before its Phase 7.
 
 ---
 
@@ -297,25 +305,15 @@ Repeat until one player remains. Every step below skips any player currently fro
    a. Advance freeze timers.
    b. Weapon rotation — non-frozen players only.
    c. Player movement and wall collision — non-frozen players only.
-2. Resolve Player Collisions — between non-frozen players only.
-3. Resolve Weapon Collisions — reverses both weapons' rotation direction; between non-frozen players only.
+2. Resolve Player Collisions — a frozen player participates as a static, infinite-mass obstacle rather than being excluded (see Player Collision, and Hit Freeze — this corrects an earlier, imprecise summary of this step as "between non-frozen players only"; the detailed Player Collision and Hit Freeze sections have always been the authoritative description, and are unchanged).
+3. Resolve Weapon Collisions — reverses both weapons' rotation direction; a frozen player is excluded from this step entirely (see Weapon Collision).
 4. Normalize Movement Speed — every non-frozen, non-eliminated player's velocity is re-normalized back to the constant configured movement speed, preserving whatever direction Steps 1c/2/3 left it pointing (see Movement Speed, above). A core gameplay rule, not Phase 9 polish.
 5. Resolve Weapon Hits — checked in a fixed player order; a player frozen earlier in this same pass is excluded from every later check in the pass, as either attacker or victim.
 6. Update player statistics.
 7. Remove eliminated players.
 8. Check if the simulation has ended.
 
-**Phase 8 scope** (see Roadmap.md, Phase 8 vs Phase 9 — "Weapon Physics Polish"): Phase 8 implements a simplified subset of this loop, matching exactly Phase 8's item list (Physics, Players, Weapons, HP, Damage, Arena collisions, Weapon rotation, Elimination, Win condition) and deliberately omitting every item Phase 9 names separately. Constant Movement Speed (Step 4 above) is implemented from Phase 8 onward regardless — it was added as a core gameplay rule after Phase 8's own review, not deferred alongside the genuine Phase 9 items below (see Progress.md, "Pre-Phase 9 — Constant Movement Speed"):
-
-1. Update Physics: weapon rotation (constant speed, non-eliminated players) and player movement + wall Reflection (non-eliminated players). No freeze timers exist yet (Hit Freeze is Phase 9).
-2. Resolve Player Collisions: circle×circle Collision + Bounce between all non-eliminated players.
-3. Normalize Movement Speed: every non-eliminated player's velocity is re-normalized back to the exact configured constant movement speed, preserving the direction left by wall Reflection (Step 1) and player-collision Bounce (Step 2) this tick (see Movement Speed, above).
-4. Resolve Weapon Hits: segment×circle Collision between each player's weapon and every other non-eliminated player; deals damage on new contact, gated by the "must fully leave before hitting again" rule. Checked in fixed player-slot order for determinism.
-5. Update player statistics (HP, damage, rotation speed).
-6. Remove eliminated players (HP ≤ 0).
-7. Check if the simulation has ended (one or zero non-eliminated players remain).
-
-Not yet implemented in Phase 8, deferred to Phase 9 per Roadmap.md: Weapon↔Weapon collision (step 3 in the full loop above, "reverse both weapon rotation directions"), Hit Freeze (attacker/victim pause + flash), continuous collision / Sweep Test (anti-tunnelling), and strict overlap correction beyond what a single discrete Bounce response already provides.
+**Implemented in full as of Phase 9** (see Progress.md's "Phase 9 — Weapon Physics Polish" for the complete account). Phase 8 implemented a reduced subset of this loop (physics, player collision, weapon hits, elimination, win condition — omitting weapon collision, movement-speed normalization was added just after Phase 8 by a dedicated Pre-Phase 9 session, and hit freeze); Phase 9 completed it with weapon↔weapon collision (Step 3), Hit Freeze (the freeze-timer bookkeeping in Step 1a and the frozen-exclusions throughout), and the anti-tunnelling/overlap-correction primitives described under Physics and Player Collision above.
 
 ---
 
@@ -375,6 +373,7 @@ Remaining players faded.
 - Smooth collisions.
 - No weapon overlap.
 - No player overlap.
+- Hit Freeze damage flash (see Hit Freeze, above) — Phase 9.
 
 ---
 
@@ -385,3 +384,6 @@ Remaining players faded.
 - Decide initial weapon variants. — Still undecided which variant(s) are selectable; Phase 8 draws a single generic weapon (a rotating segment) with no variant-specific visual, since Weapon Variant selection is Menu-level UI wiring that hasn't been built (see SettingsPanel.tsx's still-unwired "Simulation Settings" section) and no documented mechanic depends on which variant is drawn. Flagged for review.
 - Future Character Skills. — Phase 10 (see Roadmap.md).
 - Weapon length, player radius, and movement speed — all temporary placeholders implemented in Phase 8 (see `Config.ts`, `movementSpeedPixelsPerSecond` — renamed from `spawnVelocityMagnitude` once it became the constant speed enforced every tick, not just a spawn-time value; see Movement Speed, above). Not playtested.
+- Weapon↔weapon collision has no "must fully leave" cooldown, unlike Weapon Hit. — See Weapon Collision's own implementation note above and Todo.md. Not a bug; simply undocumented and flagged for review.
+- Continuous (swept) collision for rotating weapon segments is not implemented — only player↔player collision got a Sweep Test in Phase 9. See Weapon Collision's own implementation note above.
+- Hit Freeze damage flash color/style (currently solid white) — see Todo.md, Visual/Rendering.
