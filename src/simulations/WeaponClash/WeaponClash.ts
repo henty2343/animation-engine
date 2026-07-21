@@ -2,7 +2,7 @@ import type { Simulation } from '../../types/Simulation'
 import type { Player } from '../../types/Player'
 import type { Vector2 } from '../../types/Vector2'
 import { Random } from '../../shared/Random'
-import { add, scale, normalize } from '../../shared/Vector2'
+import { add, subtract, scale, normalize, length } from '../../shared/Vector2'
 import { UNIVERSAL_ARENA_SIZE } from '../../shared/Constants'
 import {
   circleCircleCollision,
@@ -20,14 +20,21 @@ import type { RenderableCharacter, RenderableWeapon } from '../../engine/renderi
 
 /**
  * Weapon Clash (see docs/WeaponClash.md). Phase 8 implemented the MVP
- * subset of that document (Physics, Players, Weapons, HP, Damage, Arena
- * collisions, Weapon rotation, Elimination, Win condition), plus a
- * Pre-Phase 9 addition (Constant Movement Speed). Phase 9 ("Weapon
- * Physics Polish" — see Roadmap.md) completes the full Simulation Loop
- * documented in WeaponClash.md: anti-tunnelling and overlap correction
- * for player↔player collision, weapon↔weapon collision (bounce + reverse
- * rotation), Hit Freeze, and the damage flash. Character Skills remain
- * out of scope (Roadmap.md, Phase 10).
+ * subset of that document, plus a Pre-Phase 9 addition (Constant
+ * Movement Speed). Phase 9 ("Weapon Physics Polish" — see Roadmap.md)
+ * completed the full Simulation Loop: anti-tunnelling and overlap
+ * correction for player↔player collision, weapon↔weapon collision
+ * (bounce + reverse rotation), Hit Freeze, and the damage flash.
+ *
+ * This file was revised again in a **post-Phase-9 playtesting follow-up**
+ * (see Progress.md for the full account), before Phase 9's final
+ * approval, adding: (1) a small, subtle downward Gravity; (2) randomized
+ * initial weapon rotation direction *and* starting angle per player; (3)
+ * a fix for a genuine bug where 2-player matches structurally never saw
+ * a weapon↔weapon collision; and (4) a "must fully leave" cooldown plus
+ * sub-stepped anti-tunnelling for weapon↔weapon collision, addressing
+ * "sticking" and residual tunnelling risk. Character Skills remain out
+ * of scope (Roadmap.md, Phase 10).
  *
  * A Weapon Clash player is the shared Player type (id, slot, character —
  * see types/Player.ts) plus the physics/combat state only this
@@ -40,7 +47,13 @@ export interface WeaponClashPlayerState extends Player {
   hp: number
   /** Damage dealt per successful hit. Constant in Phase 8/9 (no Skills yet — see Characters.md, Heavy: "Damage +1" per hit, arriving in Phase 10). */
   damage: number
-  /** Radians per second. Modified only by Weapon Collision's rotation reversal (Phase 9) until Skills arrive in Phase 10 (see Characters.md, Swift). */
+  /**
+   * Radians per second. Positive = one rotation direction, negative =
+   * the other — sign is randomized per player at spawn (see
+   * `createInitialState` below) and flipped by Weapon Collision's
+   * rotation reversal. Magnitude is otherwise constant until Skills
+   * arrive in Phase 10 (see Characters.md, Swift).
+   */
   rotationSpeed: number
   /** Current weapon rotation angle, in radians. See simulations/WeaponClash/Weapon.ts. */
   weaponAngle: number
@@ -63,6 +76,20 @@ export interface WeaponClashPlayerState extends Player {
   activeWeaponHitIds: Set<string>
 
   /**
+   * Ids of every other player whose weapon this player's weapon is
+   * *currently* locked in a weapon↔weapon collision with — i.e. already
+   * bounced + reversed rotation for this contact episode, not yet
+   * cleared. Mirrors `activeWeaponHitIds`'s "must fully leave" pattern,
+   * applied to Weapon Collision instead of Weapon Hit (see
+   * WeaponClash.md, Weapon Collision). Symmetric: a contact between `a`
+   * and `b` is recorded in *both* players' sets. Added in the
+   * post-Phase-9 playtesting follow-up to fix weapons "sticking"
+   * (bouncing and reversing rotation on every single tick while still
+   * overlapping — see Progress.md).
+   */
+  activeWeaponCollisionIds: Set<string>
+
+  /**
    * Milliseconds remaining in this player's current Hit Freeze, or `0`
    * when not frozen (see WeaponClash.md, Hit Freeze). Counts down once
    * per tick, first thing every tick (see `update()`'s Step 1a below),
@@ -70,14 +97,14 @@ export interface WeaponClashPlayerState extends Player {
    * lets this player act again this same tick, matching "the simulation
    * simply resumes." Set to `hitFreezeDurationMs` (see Config.ts) on
    * both attacker and victim the instant a weapon hit lands (Step 5
-   * below). Introduced in Phase 9.
+   * below).
    */
   freezeRemainingMs: number
 }
 
 export interface WeaponClashState {
   players: WeaponClashPlayerState[]
-  /** This run's seeded RNG (see shared/Random.ts) — spawn positions and initial velocity direction are its first consumers. */
+  /** This run's seeded RNG (see shared/Random.ts) — spawn positions, initial velocity direction, initial weapon angle, and initial rotation direction are its consumers. */
   random: Random
 }
 
@@ -106,6 +133,28 @@ export interface WeaponClashStats {
  */
 const STATIC_OBSTACLE_MASS = 1_000_000
 
+/**
+ * Safeguard cap (see `applyGravity` below): the fraction of a player's
+ * total (constant) speed that Gravity's downward pull is ever allowed to
+ * claim as pure vertical motion. Not a gameplay/balance value — an
+ * internal correctness guarantee, in the same spirit as
+ * `enforceConstantMovementSpeed`'s existing zero-velocity fallback (see
+ * that function's own "Safeguard, not gameplay" doc comment), ensuring
+ * the documented requirement that a player must never end up resting at
+ * the bottom of the arena holds *structurally*, not just probabilistically.
+ */
+const MAX_GRAVITY_VERTICAL_SPEED_FRACTION = 0.9
+
+/**
+ * Number of evenly-spaced sub-steps sampled across each tick's motion
+ * when checking whether two players' weapons collided (see the Weapon
+ * Collision section of `update()` below, and WeaponClash.md's Weapon
+ * Collision — "Weapons never tunnel"). Not a gameplay/balance value —
+ * an internal correctness/performance tradeoff constant, mirroring
+ * `STATIC_OBSTACLE_MASS` and `MAX_GRAVITY_VERTICAL_SPEED_FRACTION` above.
+ */
+const WEAPON_COLLISION_SUBSTEPS = 4
+
 /** Whether `player` is currently in a Hit Freeze (see WeaponClash.md, Hit Freeze). */
 function isFrozen(player: WeaponClashPlayerState): boolean {
   return player.freezeRemainingMs > 0
@@ -123,6 +172,63 @@ function toCollisionCircle(player: WeaponClashPlayerState, radius: number): Circ
     radius,
     mass: isFrozen(player) ? STATIC_OBSTACLE_MASS : 1,
   }
+}
+
+/**
+ * Applies one tick's worth of downward gravitational acceleration to a
+ * velocity vector (see WeaponClash.md, Gravity). Deliberately does
+ * *not* touch overall speed on its own — Step 4 of the Simulation Loop
+ * (`enforceConstantMovementSpeed`) always re-normalizes every non-frozen
+ * player's velocity back to the exact constant `movementSpeedPixelsPerSecond`
+ * afterward, discarding whatever magnitude gravity's raw addition
+ * produced. This function's only lasting effect is on *direction* — it
+ * subtly biases each tick's velocity toward straight down before that
+ * direction gets used for this tick's movement and, later, gets
+ * magnitude-normalized.
+ *
+ * Guards against the one failure mode the request explicitly called
+ * out — "players... should never end up resting at the bottom of the
+ * arena." A player's speed can never reach zero (see Movement Speed's
+ * own "Never stop moving" guarantee, unaffected by this function), so
+ * literal rest is already impossible; the real risk is a player's
+ * *direction* drifting arbitrarily close to straight down/up over many
+ * consecutive ticks with no other perturbation, leaving it bouncing in
+ * an almost-purely-vertical line hugging one wall with negligible
+ * horizontal drift. `MAX_GRAVITY_VERTICAL_SPEED_FRACTION` caps the
+ * vertical component's share of the total speed, guaranteeing a
+ * persistent, non-negligible horizontal component always remains —
+ * structurally, not just because collisions usually intervene first in
+ * practice.
+ */
+function applyGravity(
+  velocity: Vector2,
+  gravityPixelsPerSecondSquared: number,
+  deltaTimeSeconds: number,
+): Vector2 {
+  const withGravity: Vector2 = {
+    x: velocity.x,
+    y: velocity.y + gravityPixelsPerSecondSquared * deltaTimeSeconds,
+  }
+
+  const speed = length(withGravity)
+  if (speed === 0) return withGravity // defensive only — see Movement Speed's own "Never stop moving" guarantee
+
+  const maxVerticalMagnitude = speed * MAX_GRAVITY_VERTICAL_SPEED_FRACTION
+  if (Math.abs(withGravity.y) <= maxVerticalMagnitude) {
+    return withGravity
+  }
+
+  const clampedY = Math.sign(withGravity.y) * maxVerticalMagnitude
+  const remainingHorizontalMagnitude = Math.sqrt(Math.max(0, speed * speed - clampedY * clampedY))
+  // A deterministic, fixed fallback direction (rightward) for the
+  // vanishingly unlikely case `withGravity.x` is exactly 0 at the tick
+  // this cap engages — mirrors this file's existing preference for
+  // simple deterministic defaults over spending an RNG draw on a
+  // near-unreachable edge case (see `weaponAngle: 0`'s own former
+  // reasoning, before this session — see Progress.md).
+  const horizontalSign = withGravity.x === 0 ? 1 : Math.sign(withGravity.x)
+
+  return { x: horizontalSign * remainingHorizontalMagnitude, y: clampedY }
 }
 
 /**
@@ -174,23 +280,21 @@ function drawSpawnPosition(
 /**
  * Re-normalizes every non-frozen, non-eliminated player's velocity back
  * to the simulation's constant movement speed, preserving whatever
- * direction this tick's physics left it pointing (see
- * docs/WeaponClash.md, Movement Speed). A frozen player is skipped
- * entirely (Phase 9) — its velocity must stay exactly what it was the
- * instant it froze, ready to resume unchanged once the freeze ends (see
- * Hit Freeze — "Nothing is reset or recalculated").
+ * direction this tick's physics (including Gravity — see `applyGravity`
+ * above) left it pointing (see docs/WeaponClash.md, Movement Speed). A
+ * frozen player is skipped entirely — its velocity must stay exactly
+ * what it was the instant it froze, ready to resume unchanged once the
+ * freeze ends (see Hit Freeze — "Nothing is reset or recalculated").
  *
  * Safeguard, not gameplay: under normal play this function only ever
  * rescales an existing, non-zero direction — a player's velocity should
  * never actually reach exactly {0, 0}. The `isZeroLength` branch below
  * exists purely as a defensive guard against an extremely rare
- * numerical/degenerate edge case (in principle, an exact head-on Bounce
- * with zero tangential component, which `normalize` would otherwise
- * report as a direction-less zero-length vector — see shared/Vector2.ts)
- * and is not part of the intended physics model. The fallback still
- * draws from `state.random` — the run's own seeded RNG — so even this
- * exceptional path stays fully deterministic for a given seed; it is a
- * defensive branch, not a source of nondeterminism.
+ * numerical/degenerate edge case and is not part of the intended
+ * physics model. The fallback still draws from `state.random` — the
+ * run's own seeded RNG — so even this exceptional path stays fully
+ * deterministic for a given seed; it is a defensive branch, not a
+ * source of nondeterminism.
  */
 function enforceConstantMovementSpeed(state: WeaponClashState, movementSpeed: number): void {
   for (const player of state.players) {
@@ -216,6 +320,19 @@ function randomUnitVector(random: Random): Vector2 {
 }
 
 /**
+ * Linearly interpolates a Vector2 between `from` and `to` by `t` (see
+ * the weapon-collision sub-stepping in `update()` below, which
+ * interpolates each player's position across this tick's motion for
+ * anti-tunnelling purposes). A small local helper rather than a new
+ * `shared/Vector2.ts` export — this is the only call site, and
+ * Architecture.md's own rule for `/src/shared` is to add a utility only
+ * once at least two independent systems need it.
+ */
+function lerpVector2(from: Vector2, to: Vector2, t: number): Vector2 {
+  return add(from, scale(subtract(to, from), t))
+}
+
+/**
  * Builds a Weapon Clash Simulation<WeaponClashState> for a fixed roster
  * of 2–4 players (see Engine.md, Menu).
  */
@@ -228,7 +345,7 @@ export function createWeaponClashSimulation(players: Player[]): Simulation<Weapo
       const movementSpeed = WEAPON_CLASH_CONFIG.get('movementSpeedPixelsPerSecond')
       const startingHp = WEAPON_CLASH_CONFIG.get('startingHp')
       const baseDamage = WEAPON_CLASH_CONFIG.get('baseDamage')
-      const rotationSpeed = WEAPON_CLASH_CONFIG.get('rotationSpeedRadiansPerSecond')
+      const rotationSpeedMagnitude = WEAPON_CLASH_CONFIG.get('rotationSpeedRadiansPerSecond')
 
       const placedCircles: Circle[] = []
 
@@ -241,8 +358,47 @@ export function createWeaponClashSimulation(players: Player[]): Simulation<Weapo
         // gets re-normalized back to every tick thereafter (see
         // enforceConstantMovementSpeed below) — spawn just draws the
         // first direction, it isn't a special one-time magnitude.
-        const angle = random.nextFloat(0, Math.PI * 2)
-        const velocity = scale({ x: Math.cos(angle), y: Math.sin(angle) }, movementSpeed)
+        const velocityAngle = random.nextFloat(0, Math.PI * 2)
+        const velocity = scale({ x: Math.cos(velocityAngle), y: Math.sin(velocityAngle) }, movementSpeed)
+
+        // Initial weapon angle and rotation direction (post-Phase-9
+        // playtesting follow-up — see Progress.md). Both are randomized,
+        // in this fixed order, from the same seeded RNG:
+        //
+        // - `weaponAngle`: previously a fixed `0` for every player. That
+        //   turned out to be a real bug, not just a cosmetic choice: with
+        //   every player starting at the same angle and (previously)
+        //   rotating at the same fixed positive speed, every pair of
+        //   weapons stayed *permanently* parallel — and truly-parallel,
+        //   non-collinear segments can never intersect, geometrically,
+        //   no matter how the two players move. In a 2-player match this
+        //   was a structural, 100%-reproducible bug (the only pair
+        //   in the match always freezes *together* on any hit, since
+        //   Hit Freeze applies to both attacker and victim, so nothing
+        //   ever knocks their weapons out of sync) — confirmed directly
+        //   by inspecting a run: after 600 ticks, both weapons were at
+        //   the exact same angle, diff `0`. In 3-4 player matches the
+        //   same trap existed initially but was usually broken quickly,
+        //   since a hit between any *other* pair leaves a third player's
+        //   weapon rotating on unaffected while the hit pair freezes
+        //   together — introducing phase drift relative to that third
+        //   player, even though it does nothing for two players who only
+        //   ever freeze with each other. Randomizing the starting angle
+        //   independently per player means any two players' weapons are
+        //   only ever at the exact same relative angle at isolated
+        //   instants (probability zero with a continuous RNG), not
+        //   permanently — fixing the bug structurally, for every player
+        //   count, rather than leaving it to chance.
+        // - Rotation *direction* (clockwise/counter-clockwise): the
+        //   explicitly requested change — a coin flip off the same RNG,
+        //   applied as a sign on the config's rotation speed magnitude.
+        //   On its own this would only reduce (not eliminate) the
+        //   2-player bug above, since two players can still coincidentally
+        //   draw the same direction — the angle randomization above is
+        //   what makes the fix unconditional.
+        const weaponAngle = random.nextFloat(0, Math.PI * 2)
+        const rotationDirection = random.chance(0.5) ? 1 : -1
+        const rotationSpeed = rotationDirection * rotationSpeedMagnitude
 
         return {
           ...player,
@@ -251,13 +407,10 @@ export function createWeaponClashSimulation(players: Player[]): Simulation<Weapo
           hp: startingHp,
           damage: baseDamage,
           rotationSpeed,
-          // WeaponClash.md doesn't specify a starting weapon angle, and
-          // it has no documented gameplay effect (rotation begins
-          // immediately regardless) — 0 is the simplest deterministic
-          // choice. See Progress.md, Phase 8 judgment calls.
-          weaponAngle: 0,
+          weaponAngle,
           eliminated: false,
           activeWeaponHitIds: new Set<string>(),
+          activeWeaponCollisionIds: new Set<string>(),
           freezeRemainingMs: 0,
         }
       })
@@ -270,6 +423,7 @@ export function createWeaponClashSimulation(players: Player[]): Simulation<Weapo
       const weaponLength = WEAPON_CLASH_CONFIG.get('weaponLength')
       const movementSpeed = WEAPON_CLASH_CONFIG.get('movementSpeedPixelsPerSecond')
       const hitFreezeDurationMs = WEAPON_CLASH_CONFIG.get('hitFreezeDurationMs')
+      const gravityPixelsPerSecondSquared = WEAPON_CLASH_CONFIG.get('gravityPixelsPerSecondSquared')
       const deltaTimeSeconds = deltaTimeMs / 1000
 
       // Step 1a: advance freeze timers (see WeaponClash.md, Hit Freeze).
@@ -282,21 +436,28 @@ export function createWeaponClashSimulation(players: Player[]): Simulation<Weapo
         player.freezeRemainingMs = Math.max(0, player.freezeRemainingMs - deltaTimeMs)
       }
 
-      // Captured before Step 1c moves anyone, so Step 2's sweep test
-      // below has both a "before" and "after" position to check this
-      // tick's travel against (see Physics.ts, sweepCircleCollision).
+      // Captured before Step 1c moves/rotates anyone, so Step 2's sweep
+      // test and Step 3's sub-stepped weapon-collision check below both
+      // have a "before" and "after" sample to interpolate/check this
+      // tick's travel against (see Physics.ts, sweepCircleCollision, and
+      // Step 3's own comment below).
       const previousPositions = new Map(state.players.map((player) => [player.id, player.position]))
+      const previousWeaponAngles = new Map(state.players.map((player) => [player.id, player.weaponAngle]))
 
       // Step 1b/1c: weapon rotation + movement/wall collision —
       // non-frozen, non-eliminated players only (see WeaponClash.md,
-      // Simulation Loop).
+      // Simulation Loop). Gravity (see applyGravity above) is folded in
+      // here, biasing this tick's movement direction before wall
+      // reflection runs.
       for (const player of state.players) {
         if (player.eliminated || isFrozen(player)) continue
 
         player.weaponAngle = advanceWeaponAngle(player.weaponAngle, player.rotationSpeed, deltaTimeMs)
 
-        const movedPosition = add(player.position, scale(player.velocity, deltaTimeSeconds))
-        const reflected = reflectOffWall(movedPosition, player.velocity, playerRadius, UNIVERSAL_ARENA_SIZE)
+        const velocityWithGravity = applyGravity(player.velocity, gravityPixelsPerSecondSquared, deltaTimeSeconds)
+
+        const movedPosition = add(player.position, scale(velocityWithGravity, deltaTimeSeconds))
+        const reflected = reflectOffWall(movedPosition, velocityWithGravity, playerRadius, UNIVERSAL_ARENA_SIZE)
         player.position = reflected.position
         player.velocity = reflected.velocity
       }
@@ -329,22 +490,21 @@ export function createWeaponClashSimulation(players: Player[]): Simulation<Weapo
             if (!isFrozen(a)) a.velocity = bounce.velocityA
             if (!isFrozen(b)) b.velocity = bounce.velocityB
 
-            // Overlap correction (Phase 9): a purely positional
-            // separation alongside the velocity response above, so the
-            // two circles don't keep visually interpenetrating (see
-            // WeaponClash.md, Player Collision — "Overlap correction").
+            // Overlap correction: a purely positional separation
+            // alongside the velocity response above, so the two circles
+            // don't keep visually interpenetrating (see WeaponClash.md,
+            // Player Collision — "Overlap correction").
             const correction = correctCircleOverlap(circleA, circleB)
             if (!isFrozen(a)) a.position = add(a.position, correction.correctionA)
             if (!isFrozen(b)) b.position = add(b.position, correction.correctionB)
             continue
           }
 
-          // Anti-tunnelling (Phase 9; see Physics.ts,
-          // sweepCircleCollision): the discrete check above found no
-          // overlap at the *end* of this tick's motion, but a
-          // fast-enough pair can still have crossed paths somewhere
-          // *during* it. Check using each player's pre-Step-1c position
-          // and this tick's velocity.
+          // Anti-tunnelling (see Physics.ts, sweepCircleCollision): the
+          // discrete check above found no overlap at the *end* of this
+          // tick's motion, but a fast-enough pair can still have crossed
+          // paths somewhere *during* it. Check using each player's
+          // pre-Step-1c position and this tick's velocity.
           const previousA = previousPositions.get(a.id)!
           const previousB = previousPositions.get(b.id)!
           const sweepCircleA: Circle = { ...circleA, center: previousA }
@@ -377,6 +537,29 @@ export function createWeaponClashSimulation(players: Player[]): Simulation<Weapo
       // currently-frozen player is excluded from this collision entirely
       // (see WeaponClash.md, Weapon Collision), unlike Step 2's
       // player-body collision above.
+      //
+      // Detection is sub-stepped across this tick's motion (position AND
+      // weapon angle, both interpolated between their pre-Step-1c and
+      // current values) rather than checked only once at the end of the
+      // tick — a plain single end-of-tick check can miss two fast-moving,
+      // fast-rotating segments that crossed paths *between* ticks
+      // ("tunnelling"; see WeaponClash.md, Weapon Collision — "Weapons
+      // never tunnel"). This is an approximation, not a true continuous
+      // (closed-form) solution — two independently rotating *and*
+      // translating segments have no simple closed-form time-of-impact
+      // the way two circles moving at constant velocity do (see Physics.ts,
+      // sweepCircleCollision, which Step 2 above uses for exactly that
+      // reason) — but sampling several sub-steps meaningfully reduces the
+      // chance of a miss without that added complexity, matching
+      // docs/CLAUDE.md's "never overengineer."
+      //
+      // A "must fully leave" cooldown (`activeWeaponCollisionIds`,
+      // mirroring `activeWeaponHitIds`'s identical pattern for Weapon
+      // Hit) prevents the bounce+reversal response from re-triggering on
+      // every single tick two weapons remain in continuous contact —
+      // without it, a pair whose overlap persists for several ticks would
+      // otherwise flip `rotationSpeed`'s sign back and forth every tick
+      // ("sticking").
       for (let i = 0; i < state.players.length; i++) {
         const a = state.players[i]
         if (a.eliminated || isFrozen(a)) continue
@@ -385,10 +568,39 @@ export function createWeaponClashSimulation(players: Player[]): Simulation<Weapo
           const b = state.players[j]
           if (b.eliminated || isFrozen(b)) continue
 
-          const segmentA = getWeaponSegment(a.position, playerRadius, weaponLength, a.weaponAngle)
-          const segmentB = getWeaponSegment(b.position, playerRadius, weaponLength, b.weaponAngle)
+          const previousPositionA = previousPositions.get(a.id)!
+          const previousPositionB = previousPositions.get(b.id)!
+          const previousAngleA = previousWeaponAngles.get(a.id)!
+          const previousAngleB = previousWeaponAngles.get(b.id)!
 
-          if (!segmentSegmentIntersect(segmentA, segmentB).intersecting) continue
+          let intersecting = false
+          for (let step = 0; step <= WEAPON_COLLISION_SUBSTEPS && !intersecting; step++) {
+            const t = step / WEAPON_COLLISION_SUBSTEPS
+            const sampledPositionA = lerpVector2(previousPositionA, a.position, t)
+            const sampledPositionB = lerpVector2(previousPositionB, b.position, t)
+            const sampledAngleA = previousAngleA + (a.weaponAngle - previousAngleA) * t
+            const sampledAngleB = previousAngleB + (b.weaponAngle - previousAngleB) * t
+
+            const sampledSegmentA = getWeaponSegment(sampledPositionA, playerRadius, weaponLength, sampledAngleA)
+            const sampledSegmentB = getWeaponSegment(sampledPositionB, playerRadius, weaponLength, sampledAngleB)
+
+            if (segmentSegmentIntersect(sampledSegmentA, sampledSegmentB).intersecting) {
+              intersecting = true
+            }
+          }
+
+          if (!intersecting) {
+            a.activeWeaponCollisionIds.delete(b.id)
+            b.activeWeaponCollisionIds.delete(a.id)
+            continue
+          }
+
+          if (a.activeWeaponCollisionIds.has(b.id)) {
+            continue // still in the same contact episode — cooldown, see comment above
+          }
+
+          a.activeWeaponCollisionIds.add(b.id)
+          b.activeWeaponCollisionIds.add(a.id)
 
           // "Bounce players apart" — the same player<->player Bounce
           // response Step 2 uses, triggered by weapon overlap instead of
@@ -497,9 +709,9 @@ export function computeWeaponClashStats(state: WeaponClashState): Record<string,
  * matching WeaponClash.md's Elimination section literally ("Character
  * disappears").
  *
- * `isFlashing` (Phase 9) is set directly from `isFrozen(player)`, so a
- * player's Hit Freeze damage flash always starts and ends on exactly the
- * same tick as its freeze (see WeaponClash.md, Hit Freeze — "Both flash
+ * `isFlashing` is set directly from `isFrozen(player)`, so a player's
+ * Hit Freeze damage flash always starts and ends on exactly the same
+ * tick as its freeze (see WeaponClash.md, Hit Freeze — "Both flash
  * white... for the freeze duration").
  */
 export function mapWeaponClashStateToRenderables(state: WeaponClashState): {

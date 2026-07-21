@@ -102,6 +102,18 @@ Safeguard, not gameplay
 
 ---
 
+## Gravity
+
+A very small, constant downward acceleration (see `gravityPixelsPerSecondSquared` in `src/simulations/WeaponClash/Config.ts`), applied every tick to subtly curve movement.
+
+Rules
+
+- Applied to velocity *direction* only, before that tick's movement and wall reflection (Simulation Loop, Step 1c). It never changes a player's overall speed: Step 4 (Normalize Movement Speed) still re-normalizes every non-frozen player's velocity back to the exact constant `movementSpeedPixelsPerSecond` every tick, discarding whatever magnitude gravity's own raw addition produced. Gravity's only lasting effect is to bend trajectories, not to speed players up or slow them down.
+- Skipped for a frozen player, exactly like weapon rotation and movement (see Hit Freeze — "No movement").
+- A player must never end up resting at the bottom of the arena. Since a player's speed can never reach zero (see Movement Speed — "Never stop moving"), literal rest is already impossible; the real risk gravity introduces is a player's *direction* drifting arbitrarily close to straight down/up over many consecutive ticks with no other perturbation. This is guarded against structurally, not just probabilistically: gravity's contribution to the vertical component of velocity is capped at a fixed fraction of the player's total speed (an internal implementation safeguard, not a tunable balance value — see `MAX_GRAVITY_VERTICAL_SPEED_FRACTION` in `WeaponClash.ts`), guaranteeing a persistent, non-negligible horizontal component always remains.
+
+---
+
 ## Weapons
 
 Every player uses the same weapon.
@@ -129,7 +141,9 @@ Rules
 
 Default
 
-- Same rotation speed for everyone.
+- Same rotation speed (magnitude) for everyone.
+- Initial rotation *direction* (clockwise/counter-clockwise) is randomized independently per player at spawn, drawn from the run's seeded RNG — kept fully deterministic for a given seed, while giving matches more starting variety.
+- Initial weapon *angle* is likewise randomized independently per player at spawn, rather than a fixed starting angle for everyone. This is not just cosmetic variety — see Weapon Collision's own note below for why a fixed shared starting angle was a genuine bug, not merely a simplification.
 
 Rotation is only modified by Character Skills, and, as of Phase 9, by Weapon Collision (see below), which reverses it.
 
@@ -162,7 +176,11 @@ Weapon ↔ Weapon
 
 A currently-frozen player is excluded from this collision entirely (see Hit Freeze).
 
-**Implementation note (Phase 9).** Weapon↔weapon overlap is detected with a discrete segment×segment intersection test (see `engine/core/Physics.ts`, `segmentSegmentIntersect`), re-checked every tick — unlike player↔player collision (see Physics, above), no continuous/swept test is implemented for rotating weapon segments: a true continuous sweep for two independently rotating, translating segments has no simple closed-form solution, and at this simulation's documented rotation speeds and tick rate, a per-tick discrete check is a reasonable, if not airtight, approximation of "never tunnel." Flagged in Todo.md for review. WeaponClash.md also documents no cooldown for repeated weapon↔weapon contact (unlike Weapon Hit's explicit "must fully leave" rule below) — a pair of weapons whose overlap persists across several consecutive ticks will bounce and reverse rotation on every one of those ticks. Also flagged in Todo.md.
+**Implementation note (Phase 9, revised in a post-Phase-9 playtesting follow-up).** Weapon↔weapon overlap is detected with a segment×segment intersection test (see `engine/core/Physics.ts`, `segmentSegmentIntersect`). No true continuous (closed-form) sweep test is implemented for rotating weapon segments — two independently rotating *and* translating segments have no simple closed-form time-of-impact solution the way two circles moving at constant velocity do (see Physics, above, and `sweepCircleCollision`, which player↔player collision uses for exactly that reason). Instead, detection is **sub-stepped**: each tick, both players' positions and weapon angles are linearly interpolated across several sample points between their pre-tick and post-tick values, and the segment test is run at each sample. This meaningfully reduces (without fully eliminating) the chance of missing a brief crossing within a single tick, at a small, bounded extra cost — a deliberate "good enough, not overengineered" mitigation rather than a rigorous guarantee (see `WEAPON_COLLISION_SUBSTEPS` in `WeaponClash.ts`).
+
+A "must fully leave" cooldown (`activeWeaponCollisionIds`, mirroring Weapon Hit's own identical rule below) prevents the bounce+reversal response from re-triggering on every single tick two weapons remain in continuous contact. Without it, a pair whose overlap persisted for several consecutive ticks would bounce and reverse rotation *every* one of those ticks — visibly "sticking," and, confirmed during this follow-up's own verification, capable of producing a rapidly oscillating rotation-direction jitter that could stall a match's progress for a very long time.
+
+**A genuine bug, found and fixed in the same follow-up: weapon↔weapon collisions could never occur at all in a 2-player match.** Before this fix, every player spawned with the same fixed weapon angle (`0`) and the same fixed positive rotation speed — meaning every pair of weapons started, and then stayed, *permanently parallel* (identical angle, forever, since both rotate at the exact same rate). Truly parallel, non-collinear segments can never intersect, as a matter of geometry, regardless of how the two players move — this was not a flaw in `segmentSegmentIntersect`'s handling of the parallel case, which is mathematically correct, but a spawn-configuration bug that made the parallel case permanent rather than a fleeting, incidental one. In a 2-player match this was 100% reproducible: the only pair in the match always freezes *together* on any Weapon Hit (Hit Freeze applies to both attacker and victim), so nothing ever knocked their weapons out of sync. In 3–4 player matches the same trap existed at spawn but was usually broken quickly, since a hit between any *other* pair leaves a third player's weapon rotating unaffected, introducing phase drift relative to that third player — though it did nothing for two players who only ever happened to freeze with each other. The fix (see Weapon Rotation, above): both initial weapon angle and initial rotation direction are now randomized independently per player, so any two players' weapons are only ever at the exact same relative angle at isolated, fleeting instants — never permanently — for every player count, not just probabilistically for some of them.
 
 ---
 
@@ -304,9 +322,9 @@ Repeat until one player remains. Every step below skips any player currently fro
 1. Update Physics
    a. Advance freeze timers.
    b. Weapon rotation — non-frozen players only.
-   c. Player movement and wall collision — non-frozen players only.
+   c. Player movement and wall collision — non-frozen players only. Gravity (see Gravity, above) is applied to velocity direction here, immediately before movement and wall reflection.
 2. Resolve Player Collisions — a frozen player participates as a static, infinite-mass obstacle rather than being excluded (see Player Collision, and Hit Freeze — this corrects an earlier, imprecise summary of this step as "between non-frozen players only"; the detailed Player Collision and Hit Freeze sections have always been the authoritative description, and are unchanged).
-3. Resolve Weapon Collisions — reverses both weapons' rotation direction; a frozen player is excluded from this step entirely (see Weapon Collision).
+3. Resolve Weapon Collisions — sub-stepped detection across this tick's motion, reverses both weapons' rotation direction, gated by a "must fully leave" cooldown; a frozen player is excluded from this step entirely (see Weapon Collision).
 4. Normalize Movement Speed — every non-frozen, non-eliminated player's velocity is re-normalized back to the constant configured movement speed, preserving whatever direction Steps 1c/2/3 left it pointing (see Movement Speed, above). A core gameplay rule, not Phase 9 polish.
 5. Resolve Weapon Hits — checked in a fixed player order; a player frozen earlier in this same pass is excluded from every later check in the pass, as either attacker or victim.
 6. Update player statistics.
@@ -384,6 +402,7 @@ Remaining players faded.
 - Decide initial weapon variants. — Still undecided which variant(s) are selectable; Phase 8 draws a single generic weapon (a rotating segment) with no variant-specific visual, since Weapon Variant selection is Menu-level UI wiring that hasn't been built (see SettingsPanel.tsx's still-unwired "Simulation Settings" section) and no documented mechanic depends on which variant is drawn. Flagged for review.
 - Future Character Skills. — Phase 10 (see Roadmap.md).
 - Weapon length, player radius, and movement speed — all temporary placeholders implemented in Phase 8 (see `Config.ts`, `movementSpeedPixelsPerSecond` — renamed from `spawnVelocityMagnitude` once it became the constant speed enforced every tick, not just a spawn-time value; see Movement Speed, above). Not playtested.
-- Weapon↔weapon collision has no "must fully leave" cooldown, unlike Weapon Hit. — See Weapon Collision's own implementation note above and Todo.md. Not a bug; simply undocumented and flagged for review.
-- Continuous (swept) collision for rotating weapon segments is not implemented — only player↔player collision got a Sweep Test in Phase 9. See Weapon Collision's own implementation note above.
+- ~~Weapon↔weapon collision has no "must fully leave" cooldown, unlike Weapon Hit.~~ — **Fixed** in a post-Phase-9 playtesting follow-up: see Weapon Collision's own implementation note above (`activeWeaponCollisionIds`).
+- Continuous (swept), closed-form collision for rotating weapon segments is still not implemented (only player↔player collision has a true Sweep Test) — but detection is now sub-stepped across each tick's motion as a practical mitigation. See Weapon Collision's own implementation note above. A true continuous solution remains unimplemented; flagged here in case it's ever worth the added complexity.
+- Gravity's placeholder value (`gravityPixelsPerSecondSquared: 25`) is unplaytested — see Todo.md, Balance.
 - Hit Freeze damage flash color/style (currently solid white) — see Todo.md, Visual/Rendering.

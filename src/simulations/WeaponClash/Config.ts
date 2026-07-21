@@ -11,8 +11,9 @@ import { Config } from '../../shared/Config'
  * docs/CLAUDE.md, "If Requirements Are Missing" — there is nothing
  * missing for these).
  *
- * `playerRadius`, `rotationSpeedRadiansPerSecond`, `weaponLength`, and
- * `movementSpeedPixelsPerSecond` ARE genuine, unreviewed placeholders.
+ * `playerRadius`, `rotationSpeedRadiansPerSecond`, `weaponLength`,
+ * `movementSpeedPixelsPerSecond`, and `gravityPixelsPerSecondSquared`
+ * ARE genuine, unreviewed placeholders.
  *
  * Every file in this simulation reads these values through the exported
  * Config instance below, never as inline numbers (see shared/Config.ts,
@@ -69,6 +70,20 @@ export interface WeaponClashConfigShape {
    * guessed. Implemented in Phase 9.
    */
   hitFreezeDurationMs: number
+
+  /**
+   * Downward gravitational acceleration, in pixels per second squared
+   * (see WeaponClash.md, Gravity). A genuine, deliberately small
+   * placeholder — no specific number is given anywhere in the docs,
+   * only "very small... subtle." Applied to velocity direction only; it
+   * never affects a player's overall speed, since Step 4 of the
+   * Simulation Loop re-normalizes every non-frozen player's velocity
+   * back to `movementSpeedPixelsPerSecond` every tick regardless (see
+   * WeaponClash.ts's `applyGravity` and `enforceConstantMovementSpeed`).
+   * Added in this session's post-Phase-9 playtesting follow-up (see
+   * Progress.md).
+   */
+  gravityPixelsPerSecondSquared: number
 }
 
 const PLACEHOLDER_DEFAULTS: WeaponClashConfigShape = {
@@ -79,6 +94,7 @@ const PLACEHOLDER_DEFAULTS: WeaponClashConfigShape = {
   weaponLength: 100,
   movementSpeedPixelsPerSecond: 180,
   hitFreezeDurationMs: 100,
+  gravityPixelsPerSecondSquared: 25,
 }
 
 export const WEAPON_CLASH_CONFIG = new Config<WeaponClashConfigShape>(PLACEHOLDER_DEFAULTS)
